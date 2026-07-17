@@ -4,7 +4,7 @@ import '../app_colors.dart';
 /// Poses disponibles de la mascota. Vamos a ir agregando más
 /// (ej. "ejercitando", "corrigiendo postura") cuando construyamos
 /// la pantalla de ejercicio guiado.
-enum MascotPose { saludando, celebrando }
+enum MascotPose { saludando, celebrando, ejercitando }
 
 /// Mini avatar/mascota de RehabIA, con forma de "almohada-animalito"
 /// (cuerpo redondeado tipo squircle + orejitas + patitas), dibujado
@@ -137,10 +137,16 @@ class _MascotPainter extends CustomPainter {
         Offset(center.dx + r * 0.78, center.dy - r * 0.28),
         r * 0.26,
       );
-    } else {
+    } else if (pose == MascotPose.celebrando) {
       // Pose "celebrando": ambas patitas arriba, pegadas al cuerpo.
       drawPaw(Offset(center.dx - r * 0.72, center.dy - r * 0.55), r * 0.24);
       drawPaw(Offset(center.dx + r * 0.72, center.dy - r * 0.55), r * 0.24);
+    } else {
+      // Pose "ejercitando": una patita doblada hacia el pecho (como
+      // haciendo un curl) y la otra apoyada abajo — postura genérica de
+      // "en movimiento", para la tarjeta de instrucciones del ejercicio.
+      drawPaw(Offset(center.dx + r * 0.55, center.dy - r * 0.5), r * 0.24);
+      drawPaw(Offset(center.dx - r * 0.75, center.dy + r * 0.1), r * 0.24);
     }
   }
 

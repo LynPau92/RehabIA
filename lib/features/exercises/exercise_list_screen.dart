@@ -7,6 +7,7 @@ import '../../core/app_colors.dart';
 import '../../core/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/widgets/scroll_to_top_fab.dart';
+import '../../core/widgets/skeleton_loader.dart';
 
 /// Catálogo de ejercicios (Módulo 2 de los requerimientos).
 ///
@@ -65,7 +66,7 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
             .getSingleOrNull(),
         builder: (context, profileSnapshot) {
           if (!profileSnapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const _ExerciseListSkeleton();
           }
           final profile = profileSnapshot.data;
           if (profile == null || profile.injuryId == null) {
@@ -80,7 +81,7 @@ class _ExerciseListScreenState extends ConsumerState<ExerciseListScreen> {
                 .getSingle(),
             builder: (context, injurySnapshot) {
               if (!injurySnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const _ExerciseListSkeleton();
               }
               final injury = injurySnapshot.data!;
 
@@ -283,6 +284,44 @@ class _ExerciseCard extends StatelessWidget {
           ],
         ),
         ),
+      ),
+    );
+  }
+}
+
+/// --- Skeleton del catálogo de ejercicios (imita las pestañas + tarjetas) ---
+class _ExerciseListSkeleton extends StatelessWidget {
+  const _ExerciseListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonBox(width: 140, height: 14),
+          const SizedBox(height: 16),
+          Row(
+            children: List.generate(
+              3,
+              (i) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: SkeletonBox(
+                    height: 40,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          for (int i = 0; i < 4; i++) ...[
+            SkeletonBox(height: 76, borderRadius: BorderRadius.circular(16)),
+            const SizedBox(height: 12),
+          ],
+        ],
       ),
     );
   }

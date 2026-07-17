@@ -8,6 +8,7 @@ import '../../core/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/widgets/mascot_avatar.dart';
 import '../../core/widgets/scroll_to_top_fab.dart';
+import '../../core/widgets/skeleton_loader.dart';
 
 /// Pantalla Home real (Módulo 1-2 de los requerimientos): saludo con la
 /// mascota, resumen de progreso semanal, y acceso a la rutina del día
@@ -61,15 +62,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onPressed: _scrollToTop,
       ),
       body: SafeArea(
-        child: FutureBuilder<PatientProfile?>(
-          // Traemos el perfil más reciente creado (el último en la tabla).
-          future: (db.select(db.patientProfiles)
+        child: StreamBuilder<PatientProfile?>(
+          // .watch() en vez de .get(): esto es un "flujo" que se
+          // actualiza SOLO cada vez que la tabla cambia (por ejemplo,
+          // al guardar una sesión nueva) — no hace falta salir y
+          // volver a entrar a la pantalla para ver datos frescos.
+          stream: (db.select(db.patientProfiles)
                 ..orderBy([(t) => OrderingTerm.desc(t.id)])
                 ..limit(1))
-              .getSingleOrNull(),
+              .watchSingleOrNull(),
           builder: (context, profileSnapshot) {
             if (!profileSnapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const _HomeSkeleton();
             }
             final profile = profileSnapshot.data;
             if (profile == null) {
@@ -165,12 +169,11 @@ class _WeeklyProgressCard extends ConsumerWidget {
     final db = ref.watch(databaseProvider);
     final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
 
-    return FutureBuilder<List<Session>>(
-      // Traemos todas las sesiones del paciente y filtramos por fecha
-      // aquí mismo en Dart (más simple y evita depender de un método
-      // específico de comparación de fechas de la librería drift).
-      future: (db.select(db.sessions)..where((s) => s.profileId.equals(profileId)))
-          .get(),
+    return StreamBuilder<List<Session>>(
+      // Igual que arriba: .watch() se actualiza solo cuando se guarda
+      // una sesión nueva, sin tener que salir y volver a esta pantalla.
+      stream: (db.select(db.sessions)..where((s) => s.profileId.equals(profileId)))
+          .watch(),
       builder: (context, snapshot) {
         final allSessions = snapshot.data ?? [];
         final sessionsThisWeek = allSessions
@@ -247,18 +250,18 @@ class _TodayRoutineCard extends ConsumerWidget {
           return const Card(
             child: Padding(
               padding: EdgeInsets.all(20),
-              child: Center(child: CircularProgressIndicator()),
+              child: _RoutineCardSkeleton(),
             ),
           );
         }
         final injury = injurySnapshot.data!;
 
-        return FutureBuilder<List<Exercise>>(
-          future: (db.select(db.exercises)
+        return StreamBuilder<List<Exercise>>(
+          stream: (db.select(db.exercises)
                 ..where((e) => e.injuryId.equals(injury.id))
                 ..where((e) => e.phase.equals(profile.currentPhase))
                 ..orderBy([(e) => OrderingTerm.asc(e.orderIndex)]))
-              .get(),
+              .watch(),
           builder: (context, exSnapshot) {
             final exercises = exSnapshot.data ?? [];
 
@@ -306,6 +309,65 @@ class _TodayRoutineCard extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// --- Skeleton de toda la pantalla Home (mientras carga el perfil) ---
+/// Imita la forma real: encabezado con mascota, tarjeta de progreso,
+/// tarjeta de rutina — así el usuario "reconoce" la pantalla antes de
+/// que termine de cargar, en vez de ver un spinner sin contexto.
+class _HomeSkeleton extends StatelessWidget {
+  const _HomeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SkeletonBox(width: 72, height: 72, borderRadius: BorderRadius.circular(36)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SkeletonBox(height: 22),
+                    const SizedBox(height: 8),
+                    SkeletonBox(width: 180, height: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const SkeletonBox(height: 76, borderRadius: BorderRadius.all(Radius.circular(16))),
+          const SizedBox(height: 16),
+          const SkeletonBox(height: 160, borderRadius: BorderRadius.all(Radius.circular(16))),
+        ],
+      ),
+    );
+  }
+}
+
+/// --- Skeleton solo de la tarjeta de rutina (mientras carga la lesión) ---
+class _RoutineCardSkeleton extends StatelessWidget {
+  const _RoutineCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SkeletonBox(width: 120, height: 18),
+        const SizedBox(height: 10),
+        SkeletonBox(width: 180, height: 14),
+        const SizedBox(height: 16),
+        const SkeletonBox(height: 44, borderRadius: BorderRadius.all(Radius.circular(14))),
+      ],
     );
   }
 }
