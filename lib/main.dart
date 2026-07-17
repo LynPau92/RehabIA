@@ -8,11 +8,18 @@ import 'core/database/seed_data.dart';
 
 void main() async {
   // Necesario porque vamos a hacer trabajo asíncrono (abrir la base de
-  // datos y cargar el catálogo) ANTES de llamar a runApp().
+  // datos, cargar el catálogo, y revisar si ya existe un perfil) ANTES
+  // de llamar a runApp().
   WidgetsFlutterBinding.ensureInitialized();
 
   final database = AppDatabase();
   await seedDatabaseIfEmpty(database);
+
+  // Si ya existe al menos un perfil guardado, el usuario ya pasó por
+  // el Onboarding antes — entramos directo a Home. Si no hay ninguno
+  // (primera vez que se abre la app), mostramos el Onboarding.
+  final existingProfiles = await database.select(database.patientProfiles).get();
+  final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';
 
   runApp(
     // ProviderScope habilita Riverpod en toda la app.
@@ -22,13 +29,15 @@ void main() async {
       overrides: [
         databaseProvider.overrideWithValue(database),
       ],
-      child: const RehabIAApp(),
+      child: RehabIAApp(initialLocation: initialLocation),
     ),
   );
 }
 
 class RehabIAApp extends StatelessWidget {
-  const RehabIAApp({super.key});
+  final String initialLocation;
+
+  const RehabIAApp({super.key, required this.initialLocation});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +45,7 @@ class RehabIAApp extends StatelessWidget {
       title: 'RehabIA',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      routerConfig: appRouter,
+      routerConfig: buildAppRouter(initialLocation: initialLocation),
     );
   }
 }

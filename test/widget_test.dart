@@ -11,7 +11,7 @@ void main() {
     // Construimos la app envuelta en ProviderScope, igual que en main.dart.
     await tester.pumpWidget(
       const ProviderScope(
-        child: RehabIAApp(),
+        child: RehabIAApp(initialLocation: '/onboarding'),
       ),
     );
 
