@@ -5,12 +5,15 @@ import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/database/app_database.dart';
 import 'core/database/seed_data.dart';
+import 'core/notifications/notification_service.dart';
 
 void main() async {
   // Necesario porque vamos a hacer trabajo asíncrono (abrir la base de
   // datos, cargar el catálogo, y revisar si ya existe un perfil) ANTES
   // de llamar a runApp().
   WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.init();
 
   final database = AppDatabase();
   await seedDatabaseIfEmpty(database);

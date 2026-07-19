@@ -100,6 +100,28 @@ class $PatientProfilesTable extends PatientProfiles
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(1));
+  static const VerificationMeta _reminderEnabledMeta =
+      const VerificationMeta('reminderEnabled');
+  @override
+  late final GeneratedColumn<bool> reminderEnabled = GeneratedColumn<bool>(
+      'reminder_enabled', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("reminder_enabled" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _reminderHourMeta =
+      const VerificationMeta('reminderHour');
+  @override
+  late final GeneratedColumn<int> reminderHour = GeneratedColumn<int>(
+      'reminder_hour', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _reminderMinuteMeta =
+      const VerificationMeta('reminderMinute');
+  @override
+  late final GeneratedColumn<int> reminderMinute = GeneratedColumn<int>(
+      'reminder_minute', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -130,6 +152,9 @@ class $PatientProfilesTable extends PatientProfiles
         hadPriorTherapy,
         textScaleFactor,
         currentPhase,
+        reminderEnabled,
+        reminderHour,
+        reminderMinute,
         createdAt,
         updatedAt
       ];
@@ -206,6 +231,24 @@ class $PatientProfilesTable extends PatientProfiles
           currentPhase.isAcceptableOrUnknown(
               data['current_phase']!, _currentPhaseMeta));
     }
+    if (data.containsKey('reminder_enabled')) {
+      context.handle(
+          _reminderEnabledMeta,
+          reminderEnabled.isAcceptableOrUnknown(
+              data['reminder_enabled']!, _reminderEnabledMeta));
+    }
+    if (data.containsKey('reminder_hour')) {
+      context.handle(
+          _reminderHourMeta,
+          reminderHour.isAcceptableOrUnknown(
+              data['reminder_hour']!, _reminderHourMeta));
+    }
+    if (data.containsKey('reminder_minute')) {
+      context.handle(
+          _reminderMinuteMeta,
+          reminderMinute.isAcceptableOrUnknown(
+              data['reminder_minute']!, _reminderMinuteMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -247,6 +290,12 @@ class $PatientProfilesTable extends PatientProfiles
           DriftSqlType.double, data['${effectivePrefix}text_scale_factor'])!,
       currentPhase: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}current_phase'])!,
+      reminderEnabled: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}reminder_enabled'])!,
+      reminderHour: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}reminder_hour']),
+      reminderMinute: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}reminder_minute']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -273,6 +322,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
   final bool hadPriorTherapy;
   final double textScaleFactor;
   final int currentPhase;
+  final bool reminderEnabled;
+  final int? reminderHour;
+  final int? reminderMinute;
   final DateTime createdAt;
   final DateTime updatedAt;
   const PatientProfile(
@@ -288,6 +340,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       required this.hadPriorTherapy,
       required this.textScaleFactor,
       required this.currentPhase,
+      required this.reminderEnabled,
+      this.reminderHour,
+      this.reminderMinute,
       required this.createdAt,
       required this.updatedAt});
   @override
@@ -309,6 +364,13 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
     map['had_prior_therapy'] = Variable<bool>(hadPriorTherapy);
     map['text_scale_factor'] = Variable<double>(textScaleFactor);
     map['current_phase'] = Variable<int>(currentPhase);
+    map['reminder_enabled'] = Variable<bool>(reminderEnabled);
+    if (!nullToAbsent || reminderHour != null) {
+      map['reminder_hour'] = Variable<int>(reminderHour);
+    }
+    if (!nullToAbsent || reminderMinute != null) {
+      map['reminder_minute'] = Variable<int>(reminderMinute);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -331,6 +393,13 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       hadPriorTherapy: Value(hadPriorTherapy),
       textScaleFactor: Value(textScaleFactor),
       currentPhase: Value(currentPhase),
+      reminderEnabled: Value(reminderEnabled),
+      reminderHour: reminderHour == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderHour),
+      reminderMinute: reminderMinute == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderMinute),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -353,6 +422,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       hadPriorTherapy: serializer.fromJson<bool>(json['hadPriorTherapy']),
       textScaleFactor: serializer.fromJson<double>(json['textScaleFactor']),
       currentPhase: serializer.fromJson<int>(json['currentPhase']),
+      reminderEnabled: serializer.fromJson<bool>(json['reminderEnabled']),
+      reminderHour: serializer.fromJson<int?>(json['reminderHour']),
+      reminderMinute: serializer.fromJson<int?>(json['reminderMinute']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -373,6 +445,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       'hadPriorTherapy': serializer.toJson<bool>(hadPriorTherapy),
       'textScaleFactor': serializer.toJson<double>(textScaleFactor),
       'currentPhase': serializer.toJson<int>(currentPhase),
+      'reminderEnabled': serializer.toJson<bool>(reminderEnabled),
+      'reminderHour': serializer.toJson<int?>(reminderHour),
+      'reminderMinute': serializer.toJson<int?>(reminderMinute),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -391,6 +466,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           bool? hadPriorTherapy,
           double? textScaleFactor,
           int? currentPhase,
+          bool? reminderEnabled,
+          Value<int?> reminderHour = const Value.absent(),
+          Value<int?> reminderMinute = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt}) =>
       PatientProfile(
@@ -406,6 +484,11 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
         hadPriorTherapy: hadPriorTherapy ?? this.hadPriorTherapy,
         textScaleFactor: textScaleFactor ?? this.textScaleFactor,
         currentPhase: currentPhase ?? this.currentPhase,
+        reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+        reminderHour:
+            reminderHour.present ? reminderHour.value : this.reminderHour,
+        reminderMinute:
+            reminderMinute.present ? reminderMinute.value : this.reminderMinute,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -433,6 +516,15 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       currentPhase: data.currentPhase.present
           ? data.currentPhase.value
           : this.currentPhase,
+      reminderEnabled: data.reminderEnabled.present
+          ? data.reminderEnabled.value
+          : this.reminderEnabled,
+      reminderHour: data.reminderHour.present
+          ? data.reminderHour.value
+          : this.reminderHour,
+      reminderMinute: data.reminderMinute.present
+          ? data.reminderMinute.value
+          : this.reminderMinute,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -453,6 +545,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           ..write('hadPriorTherapy: $hadPriorTherapy, ')
           ..write('textScaleFactor: $textScaleFactor, ')
           ..write('currentPhase: $currentPhase, ')
+          ..write('reminderEnabled: $reminderEnabled, ')
+          ..write('reminderHour: $reminderHour, ')
+          ..write('reminderMinute: $reminderMinute, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -473,6 +568,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       hadPriorTherapy,
       textScaleFactor,
       currentPhase,
+      reminderEnabled,
+      reminderHour,
+      reminderMinute,
       createdAt,
       updatedAt);
   @override
@@ -491,6 +589,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           other.hadPriorTherapy == this.hadPriorTherapy &&
           other.textScaleFactor == this.textScaleFactor &&
           other.currentPhase == this.currentPhase &&
+          other.reminderEnabled == this.reminderEnabled &&
+          other.reminderHour == this.reminderHour &&
+          other.reminderMinute == this.reminderMinute &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -508,6 +609,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
   final Value<bool> hadPriorTherapy;
   final Value<double> textScaleFactor;
   final Value<int> currentPhase;
+  final Value<bool> reminderEnabled;
+  final Value<int?> reminderHour;
+  final Value<int?> reminderMinute;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const PatientProfilesCompanion({
@@ -523,6 +627,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     this.hadPriorTherapy = const Value.absent(),
     this.textScaleFactor = const Value.absent(),
     this.currentPhase = const Value.absent(),
+    this.reminderEnabled = const Value.absent(),
+    this.reminderHour = const Value.absent(),
+    this.reminderMinute = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -539,6 +646,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     this.hadPriorTherapy = const Value.absent(),
     this.textScaleFactor = const Value.absent(),
     this.currentPhase = const Value.absent(),
+    this.reminderEnabled = const Value.absent(),
+    this.reminderHour = const Value.absent(),
+    this.reminderMinute = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   })  : name = Value(name),
@@ -557,6 +667,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     Expression<bool>? hadPriorTherapy,
     Expression<double>? textScaleFactor,
     Expression<int>? currentPhase,
+    Expression<bool>? reminderEnabled,
+    Expression<int>? reminderHour,
+    Expression<int>? reminderMinute,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -574,6 +687,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       if (hadPriorTherapy != null) 'had_prior_therapy': hadPriorTherapy,
       if (textScaleFactor != null) 'text_scale_factor': textScaleFactor,
       if (currentPhase != null) 'current_phase': currentPhase,
+      if (reminderEnabled != null) 'reminder_enabled': reminderEnabled,
+      if (reminderHour != null) 'reminder_hour': reminderHour,
+      if (reminderMinute != null) 'reminder_minute': reminderMinute,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -592,6 +708,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       Value<bool>? hadPriorTherapy,
       Value<double>? textScaleFactor,
       Value<int>? currentPhase,
+      Value<bool>? reminderEnabled,
+      Value<int?>? reminderHour,
+      Value<int?>? reminderMinute,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
     return PatientProfilesCompanion(
@@ -607,6 +726,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       hadPriorTherapy: hadPriorTherapy ?? this.hadPriorTherapy,
       textScaleFactor: textScaleFactor ?? this.textScaleFactor,
       currentPhase: currentPhase ?? this.currentPhase,
+      reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+      reminderHour: reminderHour ?? this.reminderHour,
+      reminderMinute: reminderMinute ?? this.reminderMinute,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -652,6 +774,15 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     if (currentPhase.present) {
       map['current_phase'] = Variable<int>(currentPhase.value);
     }
+    if (reminderEnabled.present) {
+      map['reminder_enabled'] = Variable<bool>(reminderEnabled.value);
+    }
+    if (reminderHour.present) {
+      map['reminder_hour'] = Variable<int>(reminderHour.value);
+    }
+    if (reminderMinute.present) {
+      map['reminder_minute'] = Variable<int>(reminderMinute.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -676,6 +807,9 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
           ..write('hadPriorTherapy: $hadPriorTherapy, ')
           ..write('textScaleFactor: $textScaleFactor, ')
           ..write('currentPhase: $currentPhase, ')
+          ..write('reminderEnabled: $reminderEnabled, ')
+          ..write('reminderHour: $reminderHour, ')
+          ..write('reminderMinute: $reminderMinute, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2682,6 +2816,9 @@ typedef $$PatientProfilesTableCreateCompanionBuilder = PatientProfilesCompanion
   Value<bool> hadPriorTherapy,
   Value<double> textScaleFactor,
   Value<int> currentPhase,
+  Value<bool> reminderEnabled,
+  Value<int?> reminderHour,
+  Value<int?> reminderMinute,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
 });
@@ -2699,6 +2836,9 @@ typedef $$PatientProfilesTableUpdateCompanionBuilder = PatientProfilesCompanion
   Value<bool> hadPriorTherapy,
   Value<double> textScaleFactor,
   Value<int> currentPhase,
+  Value<bool> reminderEnabled,
+  Value<int?> reminderHour,
+  Value<int?> reminderMinute,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
 });
@@ -2751,6 +2891,17 @@ class $$PatientProfilesTableFilterComposer
 
   ColumnFilters<int> get currentPhase => $composableBuilder(
       column: $table.currentPhase, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get reminderEnabled => $composableBuilder(
+      column: $table.reminderEnabled,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get reminderHour => $composableBuilder(
+      column: $table.reminderHour, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get reminderMinute => $composableBuilder(
+      column: $table.reminderMinute,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -2809,6 +2960,18 @@ class $$PatientProfilesTableOrderingComposer
       column: $table.currentPhase,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get reminderEnabled => $composableBuilder(
+      column: $table.reminderEnabled,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get reminderHour => $composableBuilder(
+      column: $table.reminderHour,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get reminderMinute => $composableBuilder(
+      column: $table.reminderMinute,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -2861,6 +3024,15 @@ class $$PatientProfilesTableAnnotationComposer
   GeneratedColumn<int> get currentPhase => $composableBuilder(
       column: $table.currentPhase, builder: (column) => column);
 
+  GeneratedColumn<bool> get reminderEnabled => $composableBuilder(
+      column: $table.reminderEnabled, builder: (column) => column);
+
+  GeneratedColumn<int> get reminderHour => $composableBuilder(
+      column: $table.reminderHour, builder: (column) => column);
+
+  GeneratedColumn<int> get reminderMinute => $composableBuilder(
+      column: $table.reminderMinute, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -2907,6 +3079,9 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             Value<bool> hadPriorTherapy = const Value.absent(),
             Value<double> textScaleFactor = const Value.absent(),
             Value<int> currentPhase = const Value.absent(),
+            Value<bool> reminderEnabled = const Value.absent(),
+            Value<int?> reminderHour = const Value.absent(),
+            Value<int?> reminderMinute = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
@@ -2923,6 +3098,9 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             hadPriorTherapy: hadPriorTherapy,
             textScaleFactor: textScaleFactor,
             currentPhase: currentPhase,
+            reminderEnabled: reminderEnabled,
+            reminderHour: reminderHour,
+            reminderMinute: reminderMinute,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
@@ -2939,6 +3117,9 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             Value<bool> hadPriorTherapy = const Value.absent(),
             Value<double> textScaleFactor = const Value.absent(),
             Value<int> currentPhase = const Value.absent(),
+            Value<bool> reminderEnabled = const Value.absent(),
+            Value<int?> reminderHour = const Value.absent(),
+            Value<int?> reminderMinute = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
@@ -2955,6 +3136,9 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             hadPriorTherapy: hadPriorTherapy,
             textScaleFactor: textScaleFactor,
             currentPhase: currentPhase,
+            reminderEnabled: reminderEnabled,
+            reminderHour: reminderHour,
+            reminderMinute: reminderMinute,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
