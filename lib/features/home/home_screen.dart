@@ -10,9 +10,6 @@ import '../../core/widgets/mascot_avatar.dart';
 import '../../core/widgets/scroll_to_top_fab.dart';
 import '../../core/widgets/skeleton_loader.dart';
 
-/// Pantalla Home real (Módulo 1-2 de los requerimientos): saludo con la
-/// mascota, resumen de progreso semanal, y acceso a la rutina del día
-/// según la lesión y fase actual del paciente.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -27,8 +24,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Escuchamos el scroll: si el usuario bajó más de 300px, mostramos
-    // el botón; si vuelve a estar cerca del inicio, lo escondemos.
     _scrollController.addListener(() {
       final shouldShow = _scrollController.offset > 300;
       if (shouldShow != _showScrollTopButton) {
@@ -63,10 +58,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: SafeArea(
         child: StreamBuilder<PatientProfile?>(
-          // .watch() en vez de .get(): esto es un "flujo" que se
-          // actualiza SOLO cada vez que la tabla cambia (por ejemplo,
-          // al guardar una sesión nueva) — no hace falta salir y
-          // volver a entrar a la pantalla para ver datos frescos.
           stream: (db.select(db.patientProfiles)
                 ..orderBy([(t) => OrderingTerm.desc(t.id)])
                 ..limit(1))
@@ -98,19 +89,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// --- Encabezado: mascota + saludo personalizado ---
 class _GreetingHeader extends StatelessWidget {
   final PatientProfile profile;
-
   const _GreetingHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Esterilla simple detrás de la mascota (inspirado en cómo Luvu
-        // ubica a su personaje "en una escena" en vez de flotando solo).
-        // Es solo una elipse achatada en el color assistant bien suave.
         SizedBox(
           width: 88,
           height: 80,
@@ -157,11 +143,9 @@ class _GreetingHeader extends StatelessWidget {
   }
 }
 
-/// --- Tarjeta de progreso semanal (Módulo 4) ---
-/// Cuenta cuántas sesiones completó el usuario en los últimos 7 días.
+/// --- Tarjeta de progreso semanal ---
 class _WeeklyProgressCard extends ConsumerWidget {
   final int profileId;
-
   const _WeeklyProgressCard({required this.profileId});
 
   @override
@@ -170,14 +154,14 @@ class _WeeklyProgressCard extends ConsumerWidget {
     final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
 
     return StreamBuilder<List<Session>>(
-      // Igual que arriba: .watch() se actualiza solo cuando se guarda
-      // una sesión nueva, sin tener que salir y volver a esta pantalla.
-      stream: (db.select(db.sessions)..where((s) => s.profileId.equals(profileId)))
-          .watch(),
+      stream: (db.select(db.sessions)..where((s) => s.profileId.equals(profileId))).watch(),
       builder: (context, snapshot) {
         final allSessions = snapshot.data ?? [];
+        // .toLocal(): drift guarda las fechas en UTC; sin convertir,
+        // una sesión hecha de noche en RD (UTC-4) podría contarse mal
+        // al comparar contra la fecha de hoy en tu hora local.
         final sessionsThisWeek = allSessions
-            .where((s) => s.date.isAfter(sevenDaysAgo))
+            .where((s) => s.date.toLocal().isAfter(sevenDaysAgo))
             .length;
 
         return Card(
@@ -223,10 +207,9 @@ class _WeeklyProgressCard extends ConsumerWidget {
   }
 }
 
-/// --- Tarjeta de la rutina del día + botón para comenzar ---
+/// --- Tarjeta de la rutina del día ---
 class _TodayRoutineCard extends ConsumerWidget {
   final PatientProfile profile;
-
   const _TodayRoutineCard({required this.profile});
 
   @override
@@ -271,22 +254,13 @@ class _TodayRoutineCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Rutina de hoy',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+                    Text('Rutina de hoy', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 4),
-                    Text(
-                      injury.name,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
+                    Text(injury.name, style: const TextStyle(color: AppColors.textSecondary)),
                     const SizedBox(height: 4),
                     Text(
                       'Fase ${profile.currentPhase} · ${exercises.length} ejercicios',
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 16),
                     SizedBox(
@@ -294,9 +268,6 @@ class _TodayRoutineCard extends ConsumerWidget {
                       child: ElevatedButton.icon(
                         onPressed: exercises.isEmpty
                             ? null
-                            // Mandamos TODA la lista de ejercicios de la
-                            // fase actual — la pantalla de sesión arma
-                            // el orden serie por serie automáticamente.
                             : () => context.push('/exercise-session', extra: exercises),
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Comenzar sesión de hoy'),
@@ -313,10 +284,6 @@ class _TodayRoutineCard extends ConsumerWidget {
   }
 }
 
-/// --- Skeleton de toda la pantalla Home (mientras carga el perfil) ---
-/// Imita la forma real: encabezado con mascota, tarjeta de progreso,
-/// tarjeta de rutina — así el usuario "reconoce" la pantalla antes de
-/// que termine de cargar, en vez de ver un spinner sin contexto.
 class _HomeSkeleton extends StatelessWidget {
   const _HomeSkeleton();
 
@@ -353,7 +320,6 @@ class _HomeSkeleton extends StatelessWidget {
   }
 }
 
-/// --- Skeleton solo de la tarjeta de rutina (mientras carga la lesión) ---
 class _RoutineCardSkeleton extends StatelessWidget {
   const _RoutineCardSkeleton();
 

@@ -26,8 +26,9 @@ class AppDatabase extends _$AppDatabase {
   // v2: se agregó PatientProfiles.currentPhase.
   // v3: se agregaron los campos de recordatorio (reminderEnabled,
   //     reminderHour, reminderMinute).
+  // v4: se agregaron voiceRate y voiceVolume.
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -40,6 +41,10 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(patientProfiles, patientProfiles.reminderEnabled);
             await m.addColumn(patientProfiles, patientProfiles.reminderHour);
             await m.addColumn(patientProfiles, patientProfiles.reminderMinute);
+          }
+          if (from < 4) {
+            await m.addColumn(patientProfiles, patientProfiles.voiceRate);
+            await m.addColumn(patientProfiles, patientProfiles.voiceVolume);
           }
         },
       );

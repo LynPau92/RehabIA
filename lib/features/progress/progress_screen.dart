@@ -9,9 +9,6 @@ import '../../core/widgets/scroll_to_top_fab.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../core/widgets/mascot_avatar.dart';
 
-/// Pantalla de Progreso (Módulo 4): racha de días, resumen semanal,
-/// historial de dolor, e historial de sesiones — todo leído de las
-/// tablas Sessions y PainLogs que ahora sí se están llenando.
 class ProgressScreen extends ConsumerStatefulWidget {
   const ProgressScreen({super.key});
 
@@ -136,7 +133,6 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// --- Estado vacío con propósito (en vez de solo "no hay datos") ---
 class _EmptyProgressState extends StatelessWidget {
   final ScrollController scrollController;
   const _EmptyProgressState({required this.scrollController});
@@ -168,12 +164,20 @@ class _EmptyProgressState extends StatelessWidget {
 
 /// --- Racha de días consecutivos + resumen de la semana ---
 class _StreakAndWeekRow extends StatelessWidget {
-  final List<Session> sessions; // ya vienen ordenadas de más reciente a más antigua
+  final List<Session> sessions;
 
   const _StreakAndWeekRow({required this.sessions});
 
   int get _streakDays {
-    final days = sessions.map((s) => DateTime(s.date.year, s.date.month, s.date.day)).toSet();
+    // IMPORTANTE: convertimos cada fecha a hora LOCAL antes de sacar
+    // el "día calendario". drift guarda las fechas en UTC por dentro;
+    // si no convertimos, una sesión hecha a las 9pm en RD (UTC-4)
+    // podría contarse como si hubiera sido al día siguiente.
+    final days = sessions
+        .map((s) => s.date.toLocal())
+        .map((d) => DateTime(d.year, d.month, d.day))
+        .toSet();
+
     var cursor = DateTime.now();
     var streak = 0;
     if (!days.contains(DateTime(cursor.year, cursor.month, cursor.day))) {
@@ -188,7 +192,7 @@ class _StreakAndWeekRow extends StatelessWidget {
 
   int get _sessionsThisWeek {
     final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-    return sessions.where((s) => s.date.isAfter(sevenDaysAgo)).length;
+    return sessions.where((s) => s.date.toLocal().isAfter(sevenDaysAgo)).length;
   }
 
   @override
@@ -249,9 +253,8 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// --- Gráfico simple de barras para el dolor reciente (sin paquetes externos) ---
 class _PainChart extends StatelessWidget {
-  final List<PainLog> painLogs; // ya en orden cronológico (más antiguo primero)
+  final List<PainLog> painLogs;
 
   const _PainChart({required this.painLogs});
 
@@ -290,7 +293,9 @@ class _PainChart extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${log.date.day}/${log.date.month}',
+                          // .toLocal() también aquí, para que la fecha
+                          // mostrada coincida con tu calendario real.
+                          '${log.date.toLocal().day}/${log.date.toLocal().month}',
                           style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
                         ),
                       ],
@@ -305,13 +310,13 @@ class _PainChart extends StatelessWidget {
   }
 }
 
-/// --- Una fila del historial de sesiones ---
 class _SessionHistoryTile extends StatelessWidget {
   final Session session;
   const _SessionHistoryTile({required this.session});
 
   @override
   Widget build(BuildContext context) {
+    final localDate = session.date.toLocal();
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
@@ -325,7 +330,7 @@ class _SessionHistoryTile extends StatelessWidget {
           child: const Icon(Icons.check, color: AppColors.success),
         ),
         title: Text(
-          '${session.date.day}/${session.date.month}/${session.date.year}',
+          '${localDate.day}/${localDate.month}/${localDate.year} · ${localDate.hour.toString().padLeft(2, '0')}:${localDate.minute.toString().padLeft(2, '0')}',
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(

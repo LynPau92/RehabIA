@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'core/app_theme.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
@@ -9,9 +10,6 @@ import 'core/notifications/notification_service.dart';
 import 'core/voice/voice_assistant.dart';
 
 void main() async {
-  // Necesario porque vamos a hacer trabajo asíncrono (abrir la base de
-  // datos, cargar el catálogo, y revisar si ya existe un perfil) ANTES
-  // de llamar a runApp().
   WidgetsFlutterBinding.ensureInitialized();
 
   await NotificationService.init();
@@ -20,16 +18,17 @@ void main() async {
   final database = AppDatabase();
   await seedDatabaseIfEmpty(database);
 
-  // Si ya existe al menos un perfil guardado, el usuario ya pasó por
-  // el Onboarding antes — entramos directo a Home. Si no hay ninguno
-  // (primera vez que se abre la app), mostramos el Onboarding.
   final existingProfiles = await database.select(database.patientProfiles).get();
   final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';
 
+  // Si ya hay un perfil, aplicamos su velocidad/volumen de voz guardados
+  // desde el arranque (en vez de esperar a que abra Ajustes).
+  if (existingProfiles.isNotEmpty) {
+    final profile = existingProfiles.first;
+    await VoiceAssistant.applyPreferences(rate: profile.voiceRate, volume: profile.voiceVolume);
+  }
+
   runApp(
-    // ProviderScope habilita Riverpod en toda la app.
-    // Aquí "inyectamos" la base de datos real, sobreescribiendo el
-    // databaseProvider que definimos en core/providers.dart.
     ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(database),
@@ -39,18 +38,41 @@ void main() async {
   );
 }
 
-class RehabIAApp extends StatelessWidget {
+class RehabIAApp extends ConsumerWidget {
   final String initialLocation;
 
   const RehabIAApp({super.key, required this.initialLocation});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       title: 'RehabIA',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: buildAppRouter(initialLocation: initialLocation),
+      // Aplicamos el tamaño de texto guardado en el perfil a TODA la
+      // app, de forma reactiva: si lo cambias en Ajustes, se ve
+      // reflejado al instante en cualquier pantalla, sin reiniciar.
+      builder: (context, child) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final db = ref.watch(databaseProvider);
+            return StreamBuilder<PatientProfile?>(
+              stream: (db.select(db.patientProfiles)
+                    ..orderBy([(t) => OrderingTerm.desc(t.id)])
+                    ..limit(1))
+                  .watchSingleOrNull(),
+              builder: (context, snapshot) {
+                final scale = snapshot.data?.textScaleFactor ?? 1.0;
+                return MediaQuery(
+                  data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

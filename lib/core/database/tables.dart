@@ -34,6 +34,10 @@ class PatientProfiles extends Table {
   IntColumn get reminderHour => integer().nullable()(); // 0-23
   IntColumn get reminderMinute => integer().nullable()(); // 0-59
 
+  // --- Preferencias de accesibilidad y voz (Módulo 6) ---
+  RealColumn get voiceRate => real().withDefault(const Constant(0.48))();
+  RealColumn get voiceVolume => real().withDefault(const Constant(1.0))();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }

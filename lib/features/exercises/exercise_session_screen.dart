@@ -481,6 +481,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
           ..limit(1))
         .getSingleOrNull();
 
+    bool offerPhaseAdvance = false;
+
     if (profile != null) {
       final durationMinutes =
           DateTime.now().difference(_sessionStartedAt).inSeconds / 60.0;
@@ -511,12 +513,69 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
               painLevel: painLevel,
             ),
           );
+
+      // ¿Corresponde ofrecer avanzar de fase? Regla: la sesión cubrió
+      // TODOS los ejercicios de la fase actual (no un ejercicio suelto
+      // abierto desde el catálogo), la fase actual no es ya la máxima
+      // (3), y el dolor reportado fue bajo (3 o menos).
+      if (profile.currentPhase < 3 && painLevel <= 3 && profile.injuryId != null) {
+        final phaseExercises = await (db.select(db.exercises)
+              ..where((e) => e.injuryId.equals(profile.injuryId!))
+              ..where((e) => e.phase.equals(profile.currentPhase)))
+            .get();
+
+        offerPhaseAdvance = phaseExercises.isNotEmpty &&
+            phaseExercises.every((e) => widget.exercises.any((we) => we.id == e.id));
+      }
     }
 
-    if (mounted) {
-      Navigator.of(context).pop();
-      Navigator.of(context).pop();
+    if (!mounted) return;
+    Navigator.of(context).pop(); // cierra el diálogo de dolor
+
+    if (offerPhaseAdvance && profile != null) {
+      final advance = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const MascotAvatar(size: 80, pose: MascotPose.celebrando),
+              const SizedBox(height: 12),
+              Text(
+                '¡Vas muy bien! 🎉',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Completaste todos los ejercicios de la Fase ${profile.currentPhase} '
+                'sin dolor importante. ¿Quieres avanzar a la Fase ${profile.currentPhase + 1}?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Todavía no'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí, avanzar'),
+            ),
+          ],
+        ),
+      );
+
+      if (advance == true) {
+        await (db.update(db.patientProfiles)..where((t) => t.id.equals(profile.id))).write(
+          PatientProfilesCompanion(currentPhase: Value(profile.currentPhase + 1)),
+        );
+      }
     }
+
+    if (mounted) Navigator.of(context).pop(); // regresa al catálogo/Home
   }
 
   @override

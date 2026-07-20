@@ -28,6 +28,14 @@ class VoiceAssistant {
     _initialized = true;
   }
 
+  /// Aplica la velocidad y volumen guardados en el perfil del usuario.
+  /// Se llama al abrir la app y cada vez que el usuario cambia estos
+  /// valores en Ajustes.
+  static Future<void> applyPreferences({required double rate, required double volume}) async {
+    await _tts.setSpeechRate(rate);
+    await _tts.setVolume(volume);
+  }
+
   /// Dice un texto en voz alta.
   ///
   /// `interrupt: true` (default) — para mensajes importantes (nombre

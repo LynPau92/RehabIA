@@ -122,6 +122,22 @@ class $PatientProfilesTable extends PatientProfiles
   late final GeneratedColumn<int> reminderMinute = GeneratedColumn<int>(
       'reminder_minute', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _voiceRateMeta =
+      const VerificationMeta('voiceRate');
+  @override
+  late final GeneratedColumn<double> voiceRate = GeneratedColumn<double>(
+      'voice_rate', aliasedName, false,
+      type: DriftSqlType.double,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0.48));
+  static const VerificationMeta _voiceVolumeMeta =
+      const VerificationMeta('voiceVolume');
+  @override
+  late final GeneratedColumn<double> voiceVolume = GeneratedColumn<double>(
+      'voice_volume', aliasedName, false,
+      type: DriftSqlType.double,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1.0));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -155,6 +171,8 @@ class $PatientProfilesTable extends PatientProfiles
         reminderEnabled,
         reminderHour,
         reminderMinute,
+        voiceRate,
+        voiceVolume,
         createdAt,
         updatedAt
       ];
@@ -249,6 +267,16 @@ class $PatientProfilesTable extends PatientProfiles
           reminderMinute.isAcceptableOrUnknown(
               data['reminder_minute']!, _reminderMinuteMeta));
     }
+    if (data.containsKey('voice_rate')) {
+      context.handle(_voiceRateMeta,
+          voiceRate.isAcceptableOrUnknown(data['voice_rate']!, _voiceRateMeta));
+    }
+    if (data.containsKey('voice_volume')) {
+      context.handle(
+          _voiceVolumeMeta,
+          voiceVolume.isAcceptableOrUnknown(
+              data['voice_volume']!, _voiceVolumeMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -296,6 +324,10 @@ class $PatientProfilesTable extends PatientProfiles
           .read(DriftSqlType.int, data['${effectivePrefix}reminder_hour']),
       reminderMinute: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}reminder_minute']),
+      voiceRate: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}voice_rate'])!,
+      voiceVolume: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}voice_volume'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -325,6 +357,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
   final bool reminderEnabled;
   final int? reminderHour;
   final int? reminderMinute;
+  final double voiceRate;
+  final double voiceVolume;
   final DateTime createdAt;
   final DateTime updatedAt;
   const PatientProfile(
@@ -343,6 +377,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       required this.reminderEnabled,
       this.reminderHour,
       this.reminderMinute,
+      required this.voiceRate,
+      required this.voiceVolume,
       required this.createdAt,
       required this.updatedAt});
   @override
@@ -371,6 +407,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
     if (!nullToAbsent || reminderMinute != null) {
       map['reminder_minute'] = Variable<int>(reminderMinute);
     }
+    map['voice_rate'] = Variable<double>(voiceRate);
+    map['voice_volume'] = Variable<double>(voiceVolume);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -400,6 +438,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       reminderMinute: reminderMinute == null && nullToAbsent
           ? const Value.absent()
           : Value(reminderMinute),
+      voiceRate: Value(voiceRate),
+      voiceVolume: Value(voiceVolume),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -425,6 +465,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       reminderEnabled: serializer.fromJson<bool>(json['reminderEnabled']),
       reminderHour: serializer.fromJson<int?>(json['reminderHour']),
       reminderMinute: serializer.fromJson<int?>(json['reminderMinute']),
+      voiceRate: serializer.fromJson<double>(json['voiceRate']),
+      voiceVolume: serializer.fromJson<double>(json['voiceVolume']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -448,6 +490,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       'reminderEnabled': serializer.toJson<bool>(reminderEnabled),
       'reminderHour': serializer.toJson<int?>(reminderHour),
       'reminderMinute': serializer.toJson<int?>(reminderMinute),
+      'voiceRate': serializer.toJson<double>(voiceRate),
+      'voiceVolume': serializer.toJson<double>(voiceVolume),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -469,6 +513,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           bool? reminderEnabled,
           Value<int?> reminderHour = const Value.absent(),
           Value<int?> reminderMinute = const Value.absent(),
+          double? voiceRate,
+          double? voiceVolume,
           DateTime? createdAt,
           DateTime? updatedAt}) =>
       PatientProfile(
@@ -489,6 +535,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
             reminderHour.present ? reminderHour.value : this.reminderHour,
         reminderMinute:
             reminderMinute.present ? reminderMinute.value : this.reminderMinute,
+        voiceRate: voiceRate ?? this.voiceRate,
+        voiceVolume: voiceVolume ?? this.voiceVolume,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -525,6 +573,9 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       reminderMinute: data.reminderMinute.present
           ? data.reminderMinute.value
           : this.reminderMinute,
+      voiceRate: data.voiceRate.present ? data.voiceRate.value : this.voiceRate,
+      voiceVolume:
+          data.voiceVolume.present ? data.voiceVolume.value : this.voiceVolume,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -548,6 +599,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           ..write('reminderEnabled: $reminderEnabled, ')
           ..write('reminderHour: $reminderHour, ')
           ..write('reminderMinute: $reminderMinute, ')
+          ..write('voiceRate: $voiceRate, ')
+          ..write('voiceVolume: $voiceVolume, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -571,6 +624,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
       reminderEnabled,
       reminderHour,
       reminderMinute,
+      voiceRate,
+      voiceVolume,
       createdAt,
       updatedAt);
   @override
@@ -592,6 +647,8 @@ class PatientProfile extends DataClass implements Insertable<PatientProfile> {
           other.reminderEnabled == this.reminderEnabled &&
           other.reminderHour == this.reminderHour &&
           other.reminderMinute == this.reminderMinute &&
+          other.voiceRate == this.voiceRate &&
+          other.voiceVolume == this.voiceVolume &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -612,6 +669,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
   final Value<bool> reminderEnabled;
   final Value<int?> reminderHour;
   final Value<int?> reminderMinute;
+  final Value<double> voiceRate;
+  final Value<double> voiceVolume;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const PatientProfilesCompanion({
@@ -630,6 +689,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     this.reminderEnabled = const Value.absent(),
     this.reminderHour = const Value.absent(),
     this.reminderMinute = const Value.absent(),
+    this.voiceRate = const Value.absent(),
+    this.voiceVolume = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -649,6 +710,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     this.reminderEnabled = const Value.absent(),
     this.reminderHour = const Value.absent(),
     this.reminderMinute = const Value.absent(),
+    this.voiceRate = const Value.absent(),
+    this.voiceVolume = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   })  : name = Value(name),
@@ -670,6 +733,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     Expression<bool>? reminderEnabled,
     Expression<int>? reminderHour,
     Expression<int>? reminderMinute,
+    Expression<double>? voiceRate,
+    Expression<double>? voiceVolume,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -690,6 +755,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       if (reminderEnabled != null) 'reminder_enabled': reminderEnabled,
       if (reminderHour != null) 'reminder_hour': reminderHour,
       if (reminderMinute != null) 'reminder_minute': reminderMinute,
+      if (voiceRate != null) 'voice_rate': voiceRate,
+      if (voiceVolume != null) 'voice_volume': voiceVolume,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -711,6 +778,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       Value<bool>? reminderEnabled,
       Value<int?>? reminderHour,
       Value<int?>? reminderMinute,
+      Value<double>? voiceRate,
+      Value<double>? voiceVolume,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
     return PatientProfilesCompanion(
@@ -729,6 +798,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
       reminderHour: reminderHour ?? this.reminderHour,
       reminderMinute: reminderMinute ?? this.reminderMinute,
+      voiceRate: voiceRate ?? this.voiceRate,
+      voiceVolume: voiceVolume ?? this.voiceVolume,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -783,6 +854,12 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
     if (reminderMinute.present) {
       map['reminder_minute'] = Variable<int>(reminderMinute.value);
     }
+    if (voiceRate.present) {
+      map['voice_rate'] = Variable<double>(voiceRate.value);
+    }
+    if (voiceVolume.present) {
+      map['voice_volume'] = Variable<double>(voiceVolume.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -810,6 +887,8 @@ class PatientProfilesCompanion extends UpdateCompanion<PatientProfile> {
           ..write('reminderEnabled: $reminderEnabled, ')
           ..write('reminderHour: $reminderHour, ')
           ..write('reminderMinute: $reminderMinute, ')
+          ..write('voiceRate: $voiceRate, ')
+          ..write('voiceVolume: $voiceVolume, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2819,6 +2898,8 @@ typedef $$PatientProfilesTableCreateCompanionBuilder = PatientProfilesCompanion
   Value<bool> reminderEnabled,
   Value<int?> reminderHour,
   Value<int?> reminderMinute,
+  Value<double> voiceRate,
+  Value<double> voiceVolume,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
 });
@@ -2839,6 +2920,8 @@ typedef $$PatientProfilesTableUpdateCompanionBuilder = PatientProfilesCompanion
   Value<bool> reminderEnabled,
   Value<int?> reminderHour,
   Value<int?> reminderMinute,
+  Value<double> voiceRate,
+  Value<double> voiceVolume,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
 });
@@ -2902,6 +2985,12 @@ class $$PatientProfilesTableFilterComposer
   ColumnFilters<int> get reminderMinute => $composableBuilder(
       column: $table.reminderMinute,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get voiceRate => $composableBuilder(
+      column: $table.voiceRate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get voiceVolume => $composableBuilder(
+      column: $table.voiceVolume, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -2972,6 +3061,12 @@ class $$PatientProfilesTableOrderingComposer
       column: $table.reminderMinute,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<double> get voiceRate => $composableBuilder(
+      column: $table.voiceRate, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get voiceVolume => $composableBuilder(
+      column: $table.voiceVolume, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -3033,6 +3128,12 @@ class $$PatientProfilesTableAnnotationComposer
   GeneratedColumn<int> get reminderMinute => $composableBuilder(
       column: $table.reminderMinute, builder: (column) => column);
 
+  GeneratedColumn<double> get voiceRate =>
+      $composableBuilder(column: $table.voiceRate, builder: (column) => column);
+
+  GeneratedColumn<double> get voiceVolume => $composableBuilder(
+      column: $table.voiceVolume, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -3082,6 +3183,8 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             Value<bool> reminderEnabled = const Value.absent(),
             Value<int?> reminderHour = const Value.absent(),
             Value<int?> reminderMinute = const Value.absent(),
+            Value<double> voiceRate = const Value.absent(),
+            Value<double> voiceVolume = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
@@ -3101,6 +3204,8 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             reminderEnabled: reminderEnabled,
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
+            voiceRate: voiceRate,
+            voiceVolume: voiceVolume,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
@@ -3120,6 +3225,8 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             Value<bool> reminderEnabled = const Value.absent(),
             Value<int?> reminderHour = const Value.absent(),
             Value<int?> reminderMinute = const Value.absent(),
+            Value<double> voiceRate = const Value.absent(),
+            Value<double> voiceVolume = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
@@ -3139,6 +3246,8 @@ class $$PatientProfilesTableTableManager extends RootTableManager<
             reminderEnabled: reminderEnabled,
             reminderHour: reminderHour,
             reminderMinute: reminderMinute,
+            voiceRate: voiceRate,
+            voiceVolume: voiceVolume,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
