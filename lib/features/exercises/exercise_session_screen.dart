@@ -11,29 +11,27 @@ import '../../core/app_colors.dart';
 import '../../core/providers.dart';
 import '../../core/database/app_database.dart';
 import '../../core/widgets/mascot_avatar.dart';
+import '../../core/voice/voice_assistant.dart';
 import 'pose_painter.dart';
 import 'pose_matching.dart';
 
 /// Un "paso" individual dentro de la sesión: una serie específica de un
-/// ejercicio específico. Por ejemplo: (Isométrico de cuádriceps, serie 1),
-/// (Deslizamiento de talón, serie 1), (Isométrico de cuádriceps, serie 2)...
+/// ejercicio específico.
 class _SessionStep {
   final Exercise exercise;
-  final int setNumber; // 1, 2, 3...
-  final int totalSets; // cuántas series tiene ESE ejercicio en total
+  final int setNumber;
+  final int totalSets;
 
   _SessionStep({required this.exercise, required this.setNumber, required this.totalSets});
 }
 
 /// Construye el orden completo de la sesión en "rondas": primero la
 /// serie 1 de todos los ejercicios (en el orden del catálogo), luego la
-/// serie 2 de los que tengan 2+ series, etc. Así el usuario alterna
-/// entre ejercicios en vez de agotar uno antes de pasar al siguiente.
+/// serie 2 de los que tengan 2+ series, etc.
 List<_SessionStep> _buildSessionSteps(List<Exercise> exercises) {
   final steps = <_SessionStep>[];
-  final maxRounds = exercises
-      .map((e) => e.sets ?? 1)
-      .fold<int>(1, (a, b) => a > b ? a : b);
+  final maxRounds =
+      exercises.map((e) => e.sets ?? 1).fold<int>(1, (a, b) => a > b ? a : b);
 
   for (int round = 1; round <= maxRounds; round++) {
     for (final exercise in exercises) {
@@ -46,11 +44,8 @@ List<_SessionStep> _buildSessionSteps(List<Exercise> exercises) {
   return steps;
 }
 
-/// Pantalla de ejercicio guiado (Módulo 3, Parte A).
-///
-/// Recorre TODOS los ejercicios de la rutina del día, uno detrás de
-/// otro, sin salir de la pantalla — alternando por serie en vez de
-/// completar un ejercicio entero antes de pasar al siguiente.
+/// Pantalla de ejercicio guiado: cámara + detección de postura +
+/// contador/temporizador automático + asistente de voz.
 class ExerciseSessionScreen extends ConsumerStatefulWidget {
   final List<Exercise> exercises;
 
@@ -61,40 +56,40 @@ class ExerciseSessionScreen extends ConsumerStatefulWidget {
 }
 
 class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
-  // Interruptor manual del efecto espejo. Si en tu celular la imagen
-  // se ve "al derecho" (como te ve otra persona) en vez de como espejo,
-  // cambia esto a `true`. Si se ve invertida (como ahora), déjalo en
-  // `false` — significa que CameraX ya la espeja por su cuenta.
   static const bool _mirrorCamera = false;
 
   CameraController? _cameraController;
   Future<void>? _initializeControllerFuture;
   String? _cameraError;
 
-  // --- Detección de postura (ML Kit) ---
   final PoseDetector _poseDetector = PoseDetector(
     options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
   );
-  bool _isDetecting = false; // evita procesar un frame nuevo mientras el anterior sigue en curso
+  bool _isDetecting = false;
   List<Pose> _detectedPoses = [];
   Size? _lastImageSize;
   InputImageRotation _lastRotation = InputImageRotation.rotation0deg;
   bool _postureVisible = false;
+  DateTime? _stepAnnouncedAt;
+  DateTime? _lastPostureWarningAt;
+  bool _sessionCompleted = false;
 
-  // --- Detección automática por ángulo (prueba de concepto) ---
   double? _currentKneeAngle;
-  bool _autoTargetIsA = true; // en repCycle: ¿estamos esperando la postura A o la B?
-  int _consecutiveMatchFrames = 0; // debounce: evita falsos positivos por un frame ruidoso
+  bool _autoTargetIsA = true;
+  int _consecutiveMatchFrames = 0;
   static const int _framesNeededToConfirm = 3;
+  bool _hasAnnouncedHoldStart = false;
 
   late final List<_SessionStep> _steps;
   int _currentIndex = 0;
   final DateTime _sessionStartedAt = DateTime.now();
 
-  int _completedReps = 0; // solo para dosageType == 'repeticiones'
+  int _completedReps = 0;
   Timer? _timer;
   int _secondsRemaining = 0;
   bool _timerRunning = false;
+
+  bool _voiceEnabled = true;
 
   _SessionStep get _currentStep => _steps[_currentIndex];
   Exercise get _currentExercise => _currentStep.exercise;
@@ -103,16 +98,18 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
       _currentExercise.dosageType == 'isometrico' ||
       _currentExercise.dosageType == 'estiramiento';
 
+  AutoDetectConfig? get _autoConfig =>
+      autoDetectConfigsByExerciseName[_currentExercise.name];
+
   @override
   void initState() {
     super.initState();
     _steps = _buildSessionSteps(widget.exercises);
     _resetStepState();
     _initializeCamera();
+    _announceCurrentStep();
   }
 
-  /// Reinicia el contador/temporizador para el paso actual (se llama al
-  /// entrar a la pantalla y cada vez que avanzamos a un paso nuevo).
   void _resetStepState() {
     _completedReps = 0;
     _secondsRemaining = _currentExercise.holdSeconds ?? 20;
@@ -120,12 +117,23 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     _timerRunning = false;
     _autoTargetIsA = true;
     _consecutiveMatchFrames = 0;
+    _hasAnnouncedHoldStart = false;
   }
 
-  /// Si el ejercicio actual tiene configuración de detección automática
-  /// (por ahora, solo los 3 de la prueba de concepto), la devuelve.
-  AutoDetectConfig? get _autoConfig =>
-      autoDetectConfigsByExerciseName[_currentExercise.name];
+  void _announceCurrentStep() {
+    _stepAnnouncedAt = DateTime.now();
+    final manualNote = _autoConfig == null
+        ? ' Este ejercicio lo registras tú mismo con el botón, la cámara no lo cuenta sola.'
+        : '';
+    VoiceAssistant.speak('${_currentExercise.name}. ${_currentExercise.instructions}$manualNote');
+  }
+
+  void _toggleVoice() {
+    setState(() {
+      VoiceAssistant.toggle();
+      _voiceEnabled = VoiceAssistant.enabled;
+    });
+  }
 
   Future<void> _initializeCamera() async {
     try {
@@ -142,16 +150,10 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        // ML Kit espera un formato específico según la plataforma:
-        // NV21 en Android, BGRA8888 en iOS. Sin esto, la conversión
-        // de más abajo (_inputImageFromCameraImage) fallaría.
         imageFormatGroup:
             Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
       _initializeControllerFuture = _cameraController!.initialize().then((_) {
-        // Una vez lista la cámara, empezamos a recibir un flujo
-        // continuo de fotogramas (varias veces por segundo) — cada
-        // uno pasa por _processCameraImage.
         _cameraController!.startImageStream(_processCameraImage);
       });
       if (mounted) setState(() {});
@@ -160,22 +162,11 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     }
   }
 
-  /// Convierte un fotograma crudo de la cámara (CameraImage) al formato
-  /// que ML Kit necesita (InputImage), incluyendo la rotación correcta.
-  ///
-  /// Simplificación: asumimos que el teléfono siempre se sostiene en
-  /// vertical (portrait) — es como está pensada esta app, ya que el
-  /// usuario necesita verse de cuerpo entero mientras hace el ejercicio.
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     final camera = _cameraController!.description;
     final sensorOrientation = camera.sensorOrientation;
 
-    InputImageRotation? rotation;
-    if (Platform.isIOS) {
-      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    } else if (Platform.isAndroid) {
-      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    }
+    final rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
     if (rotation == null) return null;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
@@ -197,12 +188,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     );
   }
 
-  /// Se llama automáticamente por cada fotograma que entrega la cámara
-  /// (varias veces por segundo). Si ya estamos procesando uno, nos
-  /// saltamos los siguientes — evita acumular retraso ("frame skipping",
-  /// una técnica común para que la app no se sienta lenta).
   Future<void> _processCameraImage(CameraImage image) async {
-    if (_isDetecting) return;
+    if (_isDetecting || _sessionCompleted) return;
     _isDetecting = true;
 
     final inputImage = _inputImageFromCameraImage(image);
@@ -221,23 +208,45 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
           _postureVisible = poses.isNotEmpty && _hasGoodVisibility(poses.first);
           _currentKneeAngle = poses.isNotEmpty ? kneeAngleFromPose(poses.first) : null;
         });
-        // Fuera del setState porque puede disparar cambios de paso
-        // (avanzar de serie, mostrar el diálogo final, etc.) — mejor
-        // no anidar esa lógica dentro del propio setState.
         _evaluateAutoDetection();
+        _checkPostureAnnouncement();
       }
     } catch (_) {
-      // Si un fotograma puntual falla al procesarse, lo ignoramos y
-      // seguimos con el siguiente — no vale la pena interrumpir toda
-      // la sesión por un error de un solo frame.
+      // Ignoramos errores puntuales de un solo fotograma.
     } finally {
       _isDetecting = false;
     }
   }
 
-  /// Revisa si los puntos clave del cuerpo (hombros y caderas) se
-  /// detectaron con suficiente confianza. Lo usamos como un indicador
-  /// simple de "el usuario está bien ubicado frente a la cámara".
+  /// Avisa por voz cuando el usuario se sale del encuadre, pero con
+  /// dos protecciones para que no se vuelva molesto ni interrumpa
+  /// otros mensajes:
+  ///   1. Período de gracia: no avisa en los primeros 4 segundos
+  ///      después de anunciar un ejercicio nuevo (le da tiempo a
+  ///      terminar de escuchar las instrucciones).
+  ///   2. Enfriamiento: no repite el aviso más de una vez cada 6
+  ///      segundos, aunque sigas fuera de cuadro todo ese tiempo.
+  void _checkPostureAnnouncement() {
+    if (_sessionCompleted || _postureVisible) return;
+
+    final now = DateTime.now();
+    if (_stepAnnouncedAt != null &&
+        now.difference(_stepAnnouncedAt!) < const Duration(seconds: 4)) {
+      return;
+    }
+    if (_lastPostureWarningAt != null &&
+        now.difference(_lastPostureWarningAt!) < const Duration(seconds: 8)) {
+      return;
+    }
+
+    _lastPostureWarningAt = now;
+    // interrupt: false — si el asistente todavía está diciendo las
+    // instrucciones del ejercicio (pueden tardar varios segundos),
+    // este aviso se OMITE en vez de cortarlas a la mitad. Se vuelve a
+    // intentar solo unos milisegundos después, en el siguiente fotograma.
+    VoiceAssistant.speak('Ubícate de cuerpo entero frente a la cámara.', interrupt: false);
+  }
+
   bool _hasGoodVisibility(Pose pose) {
     const keyPoints = [
       PoseLandmarkType.leftShoulder,
@@ -252,17 +261,9 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     return true;
   }
 
-  /// El corazón de la detección automática: revisa si el ángulo de
-  /// rodilla detectado coincide con la postura objetivo del ejercicio
-  /// actual, y decide qué hacer según el tipo de ejercicio.
   void _evaluateAutoDetection() {
     final config = _autoConfig;
-    if (config == null || _currentKneeAngle == null) {
-      // Si el ejercicio no tiene detección automática configurada, o
-      // no se detecta la rodilla en este fotograma, no hacemos nada
-      // (el usuario sigue con el botón manual como respaldo).
-      return;
-    }
+    if (config == null || _currentKneeAngle == null) return;
     final angle = _currentKneeAngle!;
 
     if (config.type == AutoDetectType.isometricHold) {
@@ -272,25 +273,31 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     }
   }
 
-  /// Ejercicios por TIEMPO: mientras el ángulo coincida con el objetivo,
-  /// el cronómetro corre. En cuanto se sale de la postura, se PAUSA
-  /// automáticamente (sin perder los segundos ya transcurridos) hasta
-  /// que el paciente vuelva a la posición correcta.
   void _evaluateIsometricHold(AutoDetectConfig config, double angle) {
-    final isInPosition = config.matchesA(angle);
+    var isInPosition = config.matchesA(angle);
+
+    // Si el ejercicio requiere estar sentado/acostado, rechazamos la
+    // coincidencia cuando el paciente está claramente de pie — un
+    // ángulo de rodilla extendida se ve casi igual de pie que sentado,
+    // así que el ángulo solo no bastaba para diferenciarlos.
+    if (isInPosition &&
+        config.rejectIfStanding &&
+        _detectedPoses.isNotEmpty &&
+        isLikelyStanding(_detectedPoses.first)) {
+      isInPosition = false;
+    }
 
     if (isInPosition && !_timerRunning) {
+      if (!_hasAnnouncedHoldStart) {
+        _hasAnnouncedHoldStart = true;
+        VoiceAssistant.speak('Bien, mantén la posición.', interrupt: false);
+      }
       _startTimer();
     } else if (!isInPosition && _timerRunning) {
-      _pauseTimer(); // _secondsRemaining se queda tal cual estaba
+      _pauseTimer();
     }
   }
 
-  /// Ejercicios por REPETICIÓN: alterna entre esperar la postura A y
-  /// la postura B. Usamos un pequeño "debounce" (_framesNeededToConfirm)
-  /// para exigir que la postura se sostenga varios fotogramas seguidos
-  /// antes de aceptarla — así un solo fotograma ruidoso no cuenta una
-  /// repetición falsa.
   void _evaluateRepCycle(AutoDetectConfig config, double angle) {
     final matchesExpected =
         _autoTargetIsA ? config.matchesA(angle) : config.matchesB(angle);
@@ -305,11 +312,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     _consecutiveMatchFrames = 0;
 
     if (_autoTargetIsA) {
-      // Llegó a la postura A: ahora le pedimos la B.
       setState(() => _autoTargetIsA = false);
     } else {
-      // Llegó a la postura B, completando el ciclo A→B: cuenta como
-      // una repetición y volvemos a pedir la A.
       setState(() => _autoTargetIsA = true);
       _addRep();
     }
@@ -321,6 +325,7 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     _cameraController?.dispose();
     _poseDetector.close();
     _timer?.cancel();
+    VoiceAssistant.stop();
     super.dispose();
   }
 
@@ -353,27 +358,26 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     }
   }
 
-  /// Avanza al siguiente paso de la sesión (siguiente ejercicio o
-  /// siguiente ronda de series), o muestra el diálogo final si ya
-  /// no quedan pasos.
   void _goToNextStep() {
     if (_currentIndex < _steps.length - 1) {
       setState(() {
         _currentIndex++;
         _resetStepState();
       });
+      _announceCurrentStep();
     } else {
+      // Detenemos la cámara ANTES de hablar — si la dejáramos corriendo,
+      // un aviso de "ubícate frente a la cámara" disparado por un
+      // fotograma que llega una fracción de segundo después podría
+      // cortar el mensaje de felicitación (justo lo que pasaba antes).
+      _sessionCompleted = true;
+      _cameraController?.stopImageStream();
+      VoiceAssistant.speak('¡Excelente trabajo! Completaste tu sesión de hoy.');
       _showCompletionDialog();
     }
   }
 
-  /// Prevención de errores: salir a medio ejercicio pierde el progreso
-  /// de TODA la sesión (no solo del paso actual), así que confirmamos
-  /// antes de cerrar — en vez de que un toque accidental en la "X"
-  /// borre el avance sin aviso.
   Future<void> _confirmExit() async {
-    // Si había un temporizador corriendo, lo pausamos mientras se
-    // muestra el diálogo (si el usuario cancela, lo retomamos).
     final wasRunning = _timerRunning;
     if (wasRunning) _pauseTimer();
 
@@ -403,12 +407,12 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     if (shouldExit == true) {
       if (mounted) Navigator.of(context).pop();
     } else if (wasRunning) {
-      _startTimer(); // el usuario canceló, retomamos el conteo
+      _startTimer();
     }
   }
 
   void _showCompletionDialog() {
-    int painLevel = 3; // valor inicial del chequeo rápido de dolor
+    int painLevel = 3;
 
     showDialog(
       context: context,
@@ -470,9 +474,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     );
   }
 
-  /// Guarda el resultado de la sesión en la base de datos: el registro
-  /// general (Sessions), el detalle por ejercicio (SessionExerciseLogs),
-  /// y el chequeo de dolor (PainLogs) — y luego regresa al catálogo/Home.
   Future<void> _saveSessionAndExit(int painLevel) async {
     final db = ref.read(databaseProvider);
     final profile = await (db.select(db.patientProfiles)
@@ -493,8 +494,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
             ),
           );
 
-      // Un registro por cada ejercicio único de la sesión (no por cada
-      // "paso"/serie individual, para no duplicar de más).
       for (final exercise in widget.exercises) {
         await db.into(db.sessionExerciseLogs).insert(
               SessionExerciseLogsCompanion.insert(
@@ -515,8 +514,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     }
 
     if (mounted) {
-      Navigator.of(context).pop(); // cierra el diálogo
-      Navigator.of(context).pop(); // regresa al catálogo/Home
+      Navigator.of(context).pop();
+      Navigator.of(context).pop();
     }
   }
 
@@ -527,10 +526,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Proporciones de la pantalla — ajusta estos 3 números si
-            // quieres mover el balance (deben sumar 100 para que sea
-            // fácil de leer, aunque Flutter solo usa la proporción
-            // relativa entre ellos, no el total exacto).
             Expanded(
               flex: 32,
               child: _InstructionCard(
@@ -540,6 +535,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
                 stepIndex: _currentIndex,
                 totalSteps: _steps.length,
                 onClose: _confirmExit,
+                voiceEnabled: _voiceEnabled,
+                onToggleVoice: _toggleVoice,
               ),
             ),
             Expanded(
@@ -547,8 +544,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
               child: Stack(
                 children: [
                   Positioned.fill(child: _buildCameraPreview()),
-                  // El banner de bilateralidad ahora "flota" encima de
-                  // la cámara en vez de robarle espacio a su flex.
                   Positioned(
                     top: 8,
                     left: 8,
@@ -568,25 +563,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     );
   }
 
-  /// La cámara y el esqueleto dibujado encima, apilados juntos — se
-  /// reutiliza tanto si aplicamos el volteo de espejo como si no.
-  Widget _buildCameraAndOverlayStack() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CameraPreview(_cameraController!),
-        if (_lastImageSize != null)
-          CustomPaint(
-            painter: PosePainter(
-              poses: _detectedPoses,
-              absoluteImageSize: _lastImageSize!,
-              rotation: _lastRotation,
-            ),
-          ),
-      ],
-    );
-  }
-
   Widget _buildCameraPreview() {
     if (_cameraError != null) {
       return Center(
@@ -603,12 +579,29 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
     if (_initializeControllerFuture == null) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
+
     return FutureBuilder(
       future: _initializeControllerFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator(color: Colors.white));
         }
+
+        final overlay = Stack(
+          fit: StackFit.expand,
+          children: [
+            CameraPreview(_cameraController!),
+            if (_lastImageSize != null)
+              CustomPaint(
+                painter: PosePainter(
+                  poses: _detectedPoses,
+                  absoluteImageSize: _lastImageSize!,
+                  rotation: _lastRotation,
+                ),
+              ),
+          ],
+        );
+
         return AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -624,15 +617,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // AspectRatio evita que la imagen se vea "estirada":
-                // obliga al contenido a respetar la proporción real de
-                // la cámara, dejando franjas negras arriba/abajo si no
-                // encaja exacto, en vez de deformar la imagen para
-                // rellenar todo el espacio disponible.
-                //
-                // Nota: en modo vertical (portrait) hay que usar el
-                // INVERSO de value.aspectRatio — la cámara internamente
-                // reporta su proporción en modo horizontal.
                 Center(
                   child: AspectRatio(
                     aspectRatio: 1 / _cameraController!.value.aspectRatio,
@@ -640,12 +624,11 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
                         ? Transform(
                             alignment: Alignment.center,
                             transform: Matrix4.rotationY(3.1416),
-                            child: _buildCameraAndOverlayStack(),
+                            child: overlay,
                           )
-                        : _buildCameraAndOverlayStack(),
+                        : overlay,
                   ),
                 ),
-                // Mensaje de ayuda cuando no detecta bien la postura.
                 if (!_postureVisible)
                   Positioned(
                     bottom: 12,
@@ -680,10 +663,6 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
         color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      // SingleChildScrollView como red de seguridad: si en algún celular
-      // el contenido no cabe en el espacio disponible, se puede
-      // desplazar un poquito en vez de desbordarse (el error de
-      // "BOTTOM OVERFLOWED" que viste en las capturas).
       child: SingleChildScrollView(
         child: _isTimerBased ? _buildTimerControls() : _buildRepControls(),
       ),
@@ -755,7 +734,11 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
             style: const TextStyle(color: AppColors.assistant, fontWeight: FontWeight.w600, fontSize: 12),
           )
         else
-          const Text('Repeticiones', style: TextStyle(color: AppColors.textSecondary)),
+          const Text(
+            '📝 Este ejercicio se registra con el botón, no con la cámara',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
@@ -770,16 +753,16 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
   }
 }
 
-/// --- Tarjeta superior: nombre, mascota demostrando, instrucciones ---
-/// Inspirada en el patrón de Luvu que compartiste: una tarjeta de color
-/// con el personaje "haciendo" el ejercicio, antes de la vista de cámara.
+/// --- Tarjeta superior: nombre, instrucciones, y el botón de voz ---
 class _InstructionCard extends StatelessWidget {
   final Exercise exercise;
   final int currentSet;
   final int totalSets;
-  final int stepIndex; // 0-based
+  final int stepIndex;
   final int totalSteps;
   final VoidCallback onClose;
+  final bool voiceEnabled;
+  final VoidCallback onToggleVoice;
 
   const _InstructionCard({
     required this.exercise,
@@ -788,6 +771,8 @@ class _InstructionCard extends StatelessWidget {
     required this.stepIndex,
     required this.totalSteps,
     required this.onClose,
+    required this.voiceEnabled,
+    required this.onToggleVoice,
   });
 
   @override
@@ -824,7 +809,13 @@ class _InstructionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 48), // balancea el IconButton de la izquierda
+              IconButton(
+                icon: Icon(
+                  voiceEnabled ? Icons.volume_up : Icons.volume_off,
+                  color: Colors.white,
+                ),
+                onPressed: onToggleVoice,
+              ),
             ],
           ),
           Padding(
@@ -845,9 +836,6 @@ class _InstructionCard extends StatelessWidget {
             style: const TextStyle(color: Colors.white54, fontSize: 11),
           ),
           const SizedBox(height: 12),
-          // Sin avatar: las instrucciones ahora tienen el protagonismo,
-          // con letra grande y buen contraste — la prioridad es que se
-          // puedan leer de un vistazo, sin acercarse a la pantalla.
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -874,8 +862,6 @@ class _InstructionCard extends StatelessWidget {
 }
 
 /// --- Recordatorio de trabajar ambos lados del cuerpo ---
-/// Aparece solo para lesiones de miembro inferior o superior, ya que
-/// para tronco/columna u otras lesiones no aplica de la misma forma.
 class _BilateralReminderBanner extends ConsumerWidget {
   final int injuryId;
 
@@ -900,7 +886,6 @@ class _BilateralReminderBanner extends ConsumerWidget {
         if (message == null) return const SizedBox.shrink();
 
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.assistant.withValues(alpha: 0.85),

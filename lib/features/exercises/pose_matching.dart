@@ -1,10 +1,6 @@
 import 'dart:math' as math;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
-/// Calcula el ángulo (en grados) que forma la articulación del medio
-/// entre otros dos puntos — por ejemplo, el ángulo de la rodilla usando
-/// cadera-rodilla-tobillo. 180° = pierna completamente estirada,
-/// valores menores = más flexionada.
 double _angleAt(PoseLandmark a, PoseLandmark b, PoseLandmark c) {
   final ab = math.atan2(a.y - b.y, a.x - b.x);
   final cb = math.atan2(c.y - b.y, c.x - b.x);
@@ -12,33 +8,6 @@ double _angleAt(PoseLandmark a, PoseLandmark b, PoseLandmark c) {
   angle = angle.abs();
   if (angle > 180) angle = 360 - angle;
   return angle;
-}
-
-/// Devuelve el ángulo de rodilla (cadera-rodilla-tobillo) usando el
-/// lado (izquierdo o derecho) que la cámara esté viendo con más
-/// confianza en este fotograma — así no importa cuál pierna esté más
-/// de frente a la cámara.
-double? kneeAngleFromPose(Pose pose) {
-  double? leftConfidence = _minLikelihood(pose, [
-    PoseLandmarkType.leftHip,
-    PoseLandmarkType.leftKnee,
-    PoseLandmarkType.leftAnkle,
-  ]);
-  double? rightConfidence = _minLikelihood(pose, [
-    PoseLandmarkType.rightHip,
-    PoseLandmarkType.rightKnee,
-    PoseLandmarkType.rightAnkle,
-  ]);
-
-  final useLeft = (leftConfidence ?? 0) >= (rightConfidence ?? 0);
-  final confidence = useLeft ? leftConfidence : rightConfidence;
-  if (confidence == null || confidence < 0.5) return null;
-
-  final hip = pose.landmarks[useLeft ? PoseLandmarkType.leftHip : PoseLandmarkType.rightHip]!;
-  final knee = pose.landmarks[useLeft ? PoseLandmarkType.leftKnee : PoseLandmarkType.rightKnee]!;
-  final ankle = pose.landmarks[useLeft ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle]!;
-
-  return _angleAt(hip, knee, ankle);
 }
 
 double? _minLikelihood(Pose pose, List<PoseLandmarkType> types) {
@@ -51,31 +20,89 @@ double? _minLikelihood(Pose pose, List<PoseLandmarkType> types) {
   return min;
 }
 
-/// Tipo de verificación automática para un ejercicio específico.
-enum AutoDetectType {
-  /// Ejercicios por tiempo: hay que MANTENER un ángulo objetivo.
-  /// Si el paciente se sale de la postura, el cronómetro se pausa.
-  isometricHold,
+/// Devuelve el lado (izquierdo o derecho) que la cámara ve con más
+/// confianza para cadera-rodilla-tobillo, junto con los 3 landmarks.
+({PoseLandmark hip, PoseLandmark knee, PoseLandmark ankle, PoseLandmark shoulder})?
+    _bestLegSide(Pose pose) {
+  final leftConfidence = _minLikelihood(pose, [
+    PoseLandmarkType.leftShoulder,
+    PoseLandmarkType.leftHip,
+    PoseLandmarkType.leftKnee,
+    PoseLandmarkType.leftAnkle,
+  ]);
+  final rightConfidence = _minLikelihood(pose, [
+    PoseLandmarkType.rightShoulder,
+    PoseLandmarkType.rightHip,
+    PoseLandmarkType.rightKnee,
+    PoseLandmarkType.rightAnkle,
+  ]);
 
-  /// Ejercicios por repetición: alternar entre dos ángulos objetivo
-  /// (A y B). Completar el ciclo A→B→A cuenta como 1 repetición.
-  repCycle,
+  final useLeft = (leftConfidence ?? 0) >= (rightConfidence ?? 0);
+  final confidence = useLeft ? leftConfidence : rightConfidence;
+  if (confidence == null || confidence < 0.5) return null;
+
+  return (
+    shoulder: pose.landmarks[useLeft ? PoseLandmarkType.leftShoulder : PoseLandmarkType.rightShoulder]!,
+    hip: pose.landmarks[useLeft ? PoseLandmarkType.leftHip : PoseLandmarkType.rightHip]!,
+    knee: pose.landmarks[useLeft ? PoseLandmarkType.leftKnee : PoseLandmarkType.rightKnee]!,
+    ankle: pose.landmarks[useLeft ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle]!,
+  );
 }
 
-/// Configuración de detección automática para un ejercicio puntual.
-/// Por ahora solo la usamos con los 4 ejercicios de Fractura de Fémur
-/// - Fase 1, como prueba de concepto.
+/// Ángulo de rodilla (cadera-rodilla-tobillo). 180° = pierna estirada.
+double? kneeAngleFromPose(Pose pose) {
+  final side = _bestLegSide(pose);
+  if (side == null) return null;
+  return _angleAt(side.hip, side.knee, side.ankle);
+}
+
+/// Heurística simple para saber si el paciente está DE PIE, comparando
+/// qué tan "vertical" es el cuerpo (hombro a tobillo) contra qué tan
+/// "horizontal" es (ancho entre esos mismos puntos), y revisando que
+/// la cadera esté casi tan estirada como la rodilla (torso y muslo en
+/// línea recta — así es como se ve estar de pie con la pierna
+/// extendida; sentado o acostado se ve distinto).
+///
+/// No es perfecto, pero es suficiente para evitar el caso más común
+/// de falso positivo: contar un ejercicio de "sentado/acostado" mientras
+/// el paciente está parado.
+bool isLikelyStanding(Pose pose) {
+  final side = _bestLegSide(pose);
+  if (side == null) return false;
+
+  final verticalSpread = (side.ankle.y - side.shoulder.y).abs();
+  final horizontalSpread = [side.shoulder.x, side.hip.x, side.knee.x, side.ankle.x]
+          .reduce((a, b) => a > b ? a : b) -
+      [side.shoulder.x, side.hip.x, side.knee.x, side.ankle.x].reduce((a, b) => a < b ? a : b);
+
+  final isVerticalBody = verticalSpread > horizontalSpread * 1.3;
+  final hipAngle = _angleAt(side.shoulder, side.hip, side.knee);
+
+  // De pie = cuerpo vertical Y cadera casi estirada (torso y muslo en
+  // línea recta). Sentado tendría la cadera doblada (~90°); acostado
+  // no tendría el cuerpo vertical en absoluto.
+  return isVerticalBody && hipAngle > 150;
+}
+
+enum AutoDetectType { isometricHold, repCycle }
+
 class AutoDetectConfig {
   final AutoDetectType type;
-  final double targetAngleA; // ángulo objetivo (o único, si es isométrico)
-  final double? targetAngleB; // solo para repCycle
-  final double tolerance; // margen de error aceptado, en grados
+  final double targetAngleA;
+  final double? targetAngleB;
+  final double tolerance;
+
+  /// Si es true, rechazamos la coincidencia cuando detectamos que el
+  /// paciente está de pie — para ejercicios que requieren estar
+  /// sentado o acostado.
+  final bool rejectIfStanding;
 
   const AutoDetectConfig({
     required this.type,
     required this.targetAngleA,
     this.targetAngleB,
     this.tolerance = 15,
+    this.rejectIfStanding = false,
   });
 
   bool matchesA(double angle) => (angle - targetAngleA).abs() <= tolerance;
@@ -83,27 +110,23 @@ class AutoDetectConfig {
       targetAngleB != null && (angle - targetAngleB!).abs() <= tolerance;
 }
 
-/// Prueba de concepto: solo estos 3 ejercicios (identificados por
-/// nombre exacto) tienen detección automática por ahora. El cuarto
-/// ejercicio de esa fase (Movilización pasiva de rótula) se queda en
-/// modo manual a propósito — no es un movimiento de postura corporal
-/// que la cámara pueda verificar.
 const Map<String, AutoDetectConfig> autoDetectConfigsByExerciseName = {
   'Isométrico de cuádriceps con rodillo': AutoDetectConfig(
     type: AutoDetectType.isometricHold,
-    targetAngleA: 175, // pierna extendida
+    targetAngleA: 175,
     tolerance: 18,
+    rejectIfStanding: true, // este va sentado o acostado, no de pie
   ),
   'Deslizamiento de talón asistido': AutoDetectConfig(
     type: AutoDetectType.repCycle,
-    targetAngleA: 170, // pierna extendida
-    targetAngleB: 100, // rodilla flexionada, talón cerca del glúteo
+    targetAngleA: 170,
+    targetAngleB: 100,
     tolerance: 18,
   ),
   'Extensión terminal de rodilla (TKE)': AutoDetectConfig(
     type: AutoDetectType.repCycle,
-    targetAngleA: 150, // rodilla en reposo, ligeramente flexionada
-    targetAngleB: 175, // talón levantado, rodilla casi extendida
-    tolerance: 12, // más estricto porque el movimiento es más sutil
+    targetAngleA: 150,
+    targetAngleB: 175,
+    tolerance: 12,
   ),
 };

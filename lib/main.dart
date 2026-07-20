@@ -6,6 +6,7 @@ import 'core/router.dart';
 import 'core/database/app_database.dart';
 import 'core/database/seed_data.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/voice/voice_assistant.dart';
 
 void main() async {
   // Necesario porque vamos a hacer trabajo asíncrono (abrir la base de
@@ -14,6 +15,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await NotificationService.init();
+  await VoiceAssistant.init();
 
   final database = AppDatabase();
   await seedDatabaseIfEmpty(database);

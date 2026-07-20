@@ -2,17 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import '../../core/app_colors.dart';
 
-/// Dibuja los puntos del cuerpo (landmarks) y las líneas que los
-/// conectan (el "esqueleto"), sobre la vista de cámara.
-///
-/// La parte más delicada aquí es la ESCALA: ML Kit nos da las
-/// coordenadas de cada punto en el sistema de la imagen cruda de la
-/// cámara (por ejemplo, 480x640), pero tenemos que dibujarlas sobre un
-/// widget que puede medir otra cosa distinta (por ejemplo 350x600 en
-/// pantalla). translateX/translateY hacen esa conversión, tomando en
-/// cuenta además que, al rotar el teléfono en vertical, el ancho y el
-/// alto de la imagen "cruda" quedan invertidos respecto a lo que ves
-/// en pantalla.
 class PosePainter extends CustomPainter {
   final List<Pose> poses;
   final Size absoluteImageSize;
@@ -24,8 +13,6 @@ class PosePainter extends CustomPainter {
     required this.rotation,
   });
 
-  // Pares de puntos que se conectan con una línea para formar el
-  // "esqueleto" (torso, brazos, piernas).
   static const _connections = [
     [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
     [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
@@ -76,7 +63,6 @@ class PosePainter extends CustomPainter {
       ..strokeWidth = 3;
 
     for (final pose in poses) {
-      // Líneas del esqueleto.
       for (final pair in _connections) {
         final a = pose.landmarks[pair[0]];
         final b = pose.landmarks[pair[1]];
@@ -90,7 +76,6 @@ class PosePainter extends CustomPainter {
         );
       }
 
-      // Puntos (uno por articulación detectada con suficiente confianza).
       for (final landmark in pose.landmarks.values) {
         if (landmark.likelihood < 0.4) continue;
         canvas.drawCircle(
