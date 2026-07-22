@@ -6,6 +6,7 @@ import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/database/app_database.dart';
 import 'core/database/seed_data.dart';
+import 'core/database/data_fixes.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/voice/voice_assistant.dart';
 
@@ -17,6 +18,7 @@ void main() async {
 
   final database = AppDatabase();
   await seedDatabaseIfEmpty(database);
+  await applyKnownDataFixes(database);
 
   final existingProfiles = await database.select(database.patientProfiles).get();
   final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';

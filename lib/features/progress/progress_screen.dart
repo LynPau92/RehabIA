@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_colors.dart';
 import '../../core/providers.dart';
@@ -29,6 +30,33 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
         setState(() => _showScrollTopButton = shouldShow);
       }
     });
+  }
+
+  void _shareProgressSummary(
+    PatientProfile profile,
+    List<Session> sessions,
+    List<PainLog> painLogs,
+  ) {
+    final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+    final sessionsThisWeek =
+        sessions.where((s) => s.date.toLocal().isAfter(sevenDaysAgo)).length;
+    final lastPain = painLogs.isNotEmpty ? painLogs.last.painLevel : null;
+
+    final buffer = StringBuffer()
+      ..writeln('📋 Resumen de progreso — RehabIA')
+      ..writeln('Paciente: ${profile.name}')
+      ..writeln('Fase actual: ${profile.currentPhase}')
+      ..writeln('Sesiones totales: ${sessions.length}')
+      ..writeln('Sesiones esta semana: $sessionsThisWeek');
+
+    if (lastPain != null) {
+      buffer.writeln('Último nivel de dolor reportado: $lastPain/10');
+    }
+    buffer
+      ..writeln('')
+      ..writeln('Generado desde la app RehabIA.');
+
+    Share.share(buffer.toString().trim());
   }
 
   @override
@@ -100,6 +128,15 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     controller: _scrollController,
                     padding: const EdgeInsets.all(24),
                     children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _shareProgressSummary(profile, sessions, painLogs),
+                          icon: const Icon(Icons.ios_share, size: 18),
+                          label: const Text('Compartir resumen'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       _StreakAndWeekRow(sessions: sessions),
                       const SizedBox(height: 20),
                       if (painLogs.isNotEmpty) ...[

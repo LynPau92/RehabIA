@@ -273,6 +273,17 @@ class _TodayRoutineCard extends ConsumerWidget {
                         label: const Text('Comenzar sesión de hoy'),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    // Puerta de entrada al catálogo completo (con las
+                    // pestañas de Fase 1/2/3) — sin esto, no había forma
+                    // de volver a ver ejercicios de una fase anterior.
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () => context.push('/exercises'),
+                        icon: const Icon(Icons.list_alt, size: 18),
+                        label: const Text('Ver catálogo completo de ejercicios'),
+                      ),
+                    ),
                   ],
                 ),
               ),

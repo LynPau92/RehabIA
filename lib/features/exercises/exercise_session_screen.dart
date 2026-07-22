@@ -263,13 +263,37 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
 
   void _evaluateAutoDetection() {
     final config = _autoConfig;
-    if (config == null || _currentKneeAngle == null) return;
-    final angle = _currentKneeAngle!;
+    if (config == null || _detectedPoses.isEmpty) return;
+
+    if (config.type == AutoDetectType.singleLegHold) {
+      _evaluateSingleLegHold();
+      return;
+    }
+
+    final angle = _currentKneeAngle;
+    if (angle == null) return;
 
     if (config.type == AutoDetectType.isometricHold) {
       _evaluateIsometricHold(config, angle);
     } else {
       _evaluateRepCycle(config, angle);
+    }
+  }
+
+  /// Para "Sostén unipodal": mismo patrón que un isométrico normal
+  /// (correr/pausar el cronómetro), pero la condición no es un ángulo
+  /// sino "¿hay un pie claramente levantado del suelo?".
+  void _evaluateSingleLegHold() {
+    final isBalancing = isSingleLegStance(_detectedPoses.first);
+
+    if (isBalancing && !_timerRunning) {
+      if (!_hasAnnouncedHoldStart) {
+        _hasAnnouncedHoldStart = true;
+        VoiceAssistant.speak('Bien, mantén el equilibrio.', interrupt: false);
+      }
+      _startTimer();
+    } else if (!isBalancing && _timerRunning) {
+      _pauseTimer();
     }
   }
 
@@ -730,7 +754,8 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
 
   Widget _buildTimerControls() {
     final auto = _autoConfig;
-    final showingAutoStatus = auto != null && auto.type == AutoDetectType.isometricHold;
+    final showingAutoStatus = auto != null &&
+        (auto.type == AutoDetectType.isometricHold || auto.type == AutoDetectType.singleLegHold);
 
     return Column(
       mainAxisSize: MainAxisSize.min,

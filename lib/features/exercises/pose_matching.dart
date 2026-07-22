@@ -84,7 +84,35 @@ bool isLikelyStanding(Pose pose) {
   return isVerticalBody && hipAngle > 150;
 }
 
-enum AutoDetectType { isometricHold, repCycle }
+/// Para "Sostén unipodal": en vez de medir un ángulo, comparamos la
+/// altura de ambos tobillos. Si uno está considerablemente más arriba
+/// que el otro (relativo a tu propia altura corporal en la imagen),
+/// significa que levantaste un pie del suelo.
+bool isSingleLegStance(Pose pose) {
+  final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
+  final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
+  final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+  final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+
+  if (leftAnkle == null || rightAnkle == null || leftShoulder == null || rightShoulder == null) {
+    return false;
+  }
+  if ([leftAnkle, rightAnkle, leftShoulder, rightShoulder].any((l) => l.likelihood < 0.5)) {
+    return false;
+  }
+
+  final bodyHeight =
+      ((leftShoulder.y + rightShoulder.y) / 2 - (leftAnkle.y + rightAnkle.y) / 2).abs();
+  if (bodyHeight < 1) return false;
+
+  final ankleDifference = (leftAnkle.y - rightAnkle.y).abs();
+  // Umbral: si la diferencia de altura entre tobillos supera el 8% de
+  // tu altura corporal en la imagen, consideramos que un pie está
+  // levantado del suelo.
+  return ankleDifference > bodyHeight * 0.08;
+}
+
+enum AutoDetectType { isometricHold, repCycle, singleLegHold }
 
 class AutoDetectConfig {
   final AutoDetectType type;
@@ -111,6 +139,7 @@ class AutoDetectConfig {
 }
 
 const Map<String, AutoDetectConfig> autoDetectConfigsByExerciseName = {
+  // --- Fase 1 ---
   'Isométrico de cuádriceps con rodillo': AutoDetectConfig(
     type: AutoDetectType.isometricHold,
     targetAngleA: 175,
@@ -128,5 +157,27 @@ const Map<String, AutoDetectConfig> autoDetectConfigsByExerciseName = {
     targetAngleA: 150,
     targetAngleB: 175,
     tolerance: 12,
+  ),
+
+  // --- Fase 2 ---
+  'Prensa de piernas con banda': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 95, // rodilla flexionada (posición inicial, sentado)
+    targetAngleB: 170, // pierna extendida empujando la banda
+    tolerance: 20,
+    rejectIfStanding: true, // este va sentado
+  ),
+
+  // --- Fase 3 ---
+  'Sentadilla parcial asistida': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 170, // de pie, pierna extendida
+    targetAngleB: 135, // sentadilla parcial (cadera baja máximo 45°)
+    tolerance: 18,
+  ),
+  'Sostén unipodal': AutoDetectConfig(
+    type: AutoDetectType.singleLegHold,
+    targetAngleA: 0, // sin uso en este tipo — se evalúa con isSingleLegStance()
+    tolerance: 0,
   ),
 };

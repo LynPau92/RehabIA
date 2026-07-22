@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show OrderingTerm;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,10 +7,53 @@ import '../../core/providers.dart';
 import '../../core/database/app_database.dart';
 
 /// Pantalla de Perfil: datos del paciente + sección informativa sobre
-/// su lesión (Módulo 5), incluyendo las señales de alerta ("red flags")
-/// que ya guardamos en el catálogo desde el Paso 2b.
+/// su lesión + opción de cambiar de lesión.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
+
+  Future<void> _changeInjury(BuildContext context, WidgetRef ref, PatientProfile profile) async {
+    final db = ref.read(databaseProvider);
+    final injuries = await db.select(db.injuries).get();
+
+    if (!context.mounted) return;
+
+    final selected = await showModalBottomSheet<Injury>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _InjuryPickerSheet(injuries: injuries, currentInjuryId: profile.injuryId),
+    );
+
+    if (selected == null || !context.mounted) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('¿Cambiar de lesión?'),
+        content: Text(
+          'Vas a cambiar a "${selected.name}". Tu fase se reiniciará a la '
+          'Fase 1 con esta nueva lesión. Tu historial de sesiones '
+          'anteriores no se borra, sigue guardado.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirmar')),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await (db.update(db.patientProfiles)..where((t) => t.id.equals(profile.id))).write(
+        PatientProfilesCompanion(
+          injuryId: Value(selected.id),
+          currentPhase: const Value(1),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -34,6 +77,12 @@ class ProfileScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(24),
             children: [
               _ProfileInfoCard(profile: profile),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => _changeInjury(context, ref, profile),
+                icon: const Icon(Icons.swap_horiz, size: 18),
+                label: const Text('Cambiar mi lesión'),
+              ),
               const SizedBox(height: 20),
               if (profile.injuryId != null)
                 FutureBuilder<Injury>(
@@ -51,6 +100,72 @@ class ProfileScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// --- Hoja para elegir una lesión nueva, agrupada por zona corporal ---
+class _InjuryPickerSheet extends StatelessWidget {
+  final List<Injury> injuries;
+  final int? currentInjuryId;
+
+  const _InjuryPickerSheet({required this.injuries, required this.currentInjuryId});
+
+  static const Map<String, String> _regionLabels = {
+    'miembro_inferior': '🦵 Miembro inferior',
+    'miembro_superior': '🦾 Miembro superior',
+    'tronco_columna': '🦴 Tronco y columna',
+    'otras': '💥 Otras lesiones',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final grouped = <String, List<Injury>>{};
+    for (final injury in injuries) {
+      grouped.putIfAbsent(injury.bodyRegion, () => []).add(injury);
+    }
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('Elige tu lesión', style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 16),
+            for (final region in _regionLabels.keys)
+              if (grouped[region] != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Text(_regionLabels[region]!, style: Theme.of(context).textTheme.titleLarge),
+                ),
+                for (final injury in grouped[region]!)
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: injury.id == currentInjuryId ? AppColors.primary : AppColors.border,
+                        width: injury.id == currentInjuryId ? 2 : 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      onTap: () => Navigator.pop(context, injury),
+                      title: Text(injury.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(injury.focusDescription, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: injury.id == currentInjuryId
+                          ? const Icon(Icons.check_circle, color: AppColors.success)
+                          : const Icon(Icons.chevron_right),
+                    ),
+                  ),
+              ],
+          ],
+        );
+      },
     );
   }
 }
@@ -153,8 +268,6 @@ class _InjuryInfoSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        // Tarjeta de señales de alerta, con color de "alert" para que
-        // destaque claramente frente al resto del contenido.
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(

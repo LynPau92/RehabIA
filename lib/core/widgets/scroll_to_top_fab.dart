@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 
-/// Botón flotante "volver arriba", pensado para pantallas largas con
-/// scroll (Progreso, catálogo de ejercicios, etc.).
-///
-/// Es un widget "tonto" (no sabe nada de scroll por sí mismo) — solo
-/// recibe si debe mostrarse (`visible`) y qué hacer al tocarlo
-/// (`onPressed`). La pantalla que lo usa es la que decide cuándo
-/// mostrarlo, según la posición del scroll.
+/// Botón flotante "volver arriba", reutilizable en cualquier pantalla
+/// larga con scroll (Home, Progreso, catálogo de ejercicios, etc.).
 class ScrollToTopFab extends StatelessWidget {
   final bool visible;
   final VoidCallback onPressed;
@@ -20,8 +15,6 @@ class ScrollToTopFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // AnimatedScale + AnimatedOpacity le dan una aparición/desaparición
-    // suave en vez de que el botón aparezca de golpe.
     return AnimatedScale(
       scale: visible ? 1 : 0,
       duration: const Duration(milliseconds: 200),
@@ -30,7 +23,14 @@ class ScrollToTopFab extends StatelessWidget {
         opacity: visible ? 1 : 0,
         duration: const Duration(milliseconds: 200),
         child: FloatingActionButton(
-          heroTag: 'scrollToTop', // evita conflicto si hay otro FAB en la app
+          // heroTag: null desactiva la animación "Hero" para este
+          // botón por completo. Como varias pantallas usan este mismo
+          // widget, y con el patrón de pestañas pueden convivir
+          // montadas al mismo tiempo, usar un tag fijo (aunque fuera
+          // único por nombre) igual puede chocar si el mismo texto se
+          // reutiliza sin querer. null es la forma más simple y segura
+          // de decir "este FAB no necesita esa animación".
+          heroTag: null,
           backgroundColor: AppColors.success,
           onPressed: onPressed,
           child: const Icon(Icons.arrow_upward, color: Colors.white),
