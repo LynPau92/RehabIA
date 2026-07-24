@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_colors.dart';
@@ -9,6 +12,7 @@ import '../../core/database/app_database.dart';
 import '../../core/widgets/scroll_to_top_fab.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../core/widgets/mascot_avatar.dart';
+import 'shareable_session_card.dart';
 
 class ProgressScreen extends ConsumerStatefulWidget {
   const ProgressScreen({super.key});
@@ -32,31 +36,57 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     });
   }
 
-  void _shareProgressSummary(
-    PatientProfile profile,
-    List<Session> sessions,
-    List<PainLog> painLogs,
-  ) {
-    final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-    final sessionsThisWeek =
-        sessions.where((s) => s.date.toLocal().isAfter(sevenDaysAgo)).length;
-    final lastPain = painLogs.isNotEmpty ? painLogs.last.painLevel : null;
+  bool _isSharing = false;
 
-    final buffer = StringBuffer()
-      ..writeln('📋 Resumen de progreso — RehabIA')
-      ..writeln('Paciente: ${profile.name}')
-      ..writeln('Fase actual: ${profile.currentPhase}')
-      ..writeln('Sesiones totales: ${sessions.length}')
-      ..writeln('Sesiones esta semana: $sessionsThisWeek');
+  Future<void> _shareProgressSummary(PatientProfile profile, List<Session> sessions) async {
+    if (sessions.isEmpty || _isSharing) return;
+    setState(() => _isSharing = true);
 
-    if (lastPain != null) {
-      buffer.writeln('Último nivel de dolor reportado: $lastPain/10');
+    try {
+      final db = ref.read(databaseProvider);
+      // Tomamos la sesión más reciente (ya vienen ordenadas de más
+      // nueva a más vieja) y traemos el detalle de sus ejercicios.
+      final latestSession = sessions.first;
+      final logs = await (db.select(db.sessionExerciseLogs)
+            ..where((l) => l.sessionId.equals(latestSession.id)))
+          .get();
+
+      final entries = <ShareableExerciseEntry>[];
+      for (final log in logs) {
+        final exercise =
+            await (db.select(db.exercises)..where((e) => e.id.equals(log.exerciseId))).getSingle();
+        entries.add(ShareableExerciseEntry(exercise: exercise, log: log));
+      }
+
+      if (!mounted) return;
+
+      final card = ShareableSessionCard(
+        patientName: profile.name,
+        session: latestSession,
+        entries: entries,
+      );
+
+      final pngBytes = await captureSessionCardAsPng(context, card);
+      if (pngBytes == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo generar la imagen. Intenta de nuevo.')),
+          );
+        }
+        return;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/rehabia_resumen.png');
+      await file.writeAsBytes(pngBytes);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '¡Mira mi progreso en RehabIA! 💪',
+      );
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
     }
-    buffer
-      ..writeln('')
-      ..writeln('Generado desde la app RehabIA.');
-
-    Share.share(buffer.toString().trim());
   }
 
   @override
@@ -131,9 +161,15 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: OutlinedButton.icon(
-                          onPressed: () => _shareProgressSummary(profile, sessions, painLogs),
-                          icon: const Icon(Icons.ios_share, size: 18),
-                          label: const Text('Compartir resumen'),
+                          onPressed: _isSharing ? null : () => _shareProgressSummary(profile, sessions),
+                          icon: _isSharing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.ios_share, size: 18),
+                          label: Text(_isSharing ? 'Generando...' : 'Compartir resumen'),
                         ),
                       ),
                       const SizedBox(height: 12),

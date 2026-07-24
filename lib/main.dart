@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'core/app_theme.dart';
 import 'core/providers.dart';
@@ -10,34 +11,96 @@ import 'core/database/data_fixes.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/voice/voice_assistant.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
 
-  await NotificationService.init();
-  await VoiceAssistant.init();
+  // Le decimos al splash nativo (el que configuramos con
+  // flutter_native_splash: avatar + "RehabIA" sobre fondo turquesa)
+  // que se quede visible, en vez de desaparecer solo apenas Flutter
+  // dibuje su primer fotograma. Así evitamos el "doble splash" que
+  // viste antes (nativo → pantalla de carga nuestra aparte) — ahora
+  // es UNA sola imagen continua hasta que la app esté lista de verdad.
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  final database = AppDatabase();
-  await seedDatabaseIfEmpty(database);
-  await applyKnownDataFixes(database);
+  runApp(const _Bootstrap());
+}
 
-  final existingProfiles = await database.select(database.patientProfiles).get();
-  final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';
+class _BootstrapResult {
+  final AppDatabase database;
+  final String initialLocation;
+  _BootstrapResult({required this.database, required this.initialLocation});
+}
 
-  // Si ya hay un perfil, aplicamos su velocidad/volumen de voz guardados
-  // desde el arranque (en vez de esperar a que abra Ajustes).
-  if (existingProfiles.isNotEmpty) {
-    final profile = existingProfiles.first;
-    await VoiceAssistant.applyPreferences(rate: profile.voiceRate, volume: profile.voiceVolume);
+/// Hace todo el trabajo de arranque (base de datos, voz,
+/// notificaciones) mientras el splash nativo sigue visible por
+/// fuera. En cuanto termina, llama a `FlutterNativeSplash.remove()`
+/// UNA sola vez, y recién ahí construye la app real.
+class _Bootstrap extends StatefulWidget {
+  const _Bootstrap();
+
+  @override
+  State<_Bootstrap> createState() => _BootstrapState();
+}
+
+class _BootstrapState extends State<_Bootstrap> {
+  late final Future<_BootstrapResult> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _runBootstrap().then((result) {
+      // Quitamos el splash nativo justo aquí — el único punto donde
+      // sabemos con certeza que los datos ya están listos.
+      FlutterNativeSplash.remove();
+      return result;
+    });
   }
 
-  runApp(
-    ProviderScope(
-      overrides: [
-        databaseProvider.overrideWithValue(database),
-      ],
-      child: RehabIAApp(initialLocation: initialLocation),
-    ),
-  );
+  Future<_BootstrapResult> _runBootstrap() async {
+    await NotificationService.init();
+    await VoiceAssistant.init();
+
+    final database = AppDatabase();
+    await seedDatabaseIfEmpty(database);
+    await applyKnownDataFixes(database);
+
+    final existingProfiles = await database.select(database.patientProfiles).get();
+    final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';
+
+    if (existingProfiles.isNotEmpty) {
+      final profile = existingProfiles.first;
+      await VoiceAssistant.applyPreferences(rate: profile.voiceRate, volume: profile.voiceVolume);
+    }
+
+    return _BootstrapResult(database: database, initialLocation: initialLocation);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      home: FutureBuilder<_BootstrapResult>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            // El splash nativo sigue tapando la pantalla completa
+            // gracias a preserve() — aquí abajo no hace falta dibujar
+            // NADA (ni mascota, ni spinner); cualquier cosa que
+            // pongamos sería la "segunda imagen" que ya no queremos.
+            return const SizedBox.shrink();
+          }
+          final result = snapshot.data!;
+          return ProviderScope(
+            overrides: [
+              databaseProvider.overrideWithValue(result.database),
+            ],
+            child: RehabIAApp(initialLocation: result.initialLocation),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class RehabIAApp extends ConsumerWidget {
@@ -52,9 +115,6 @@ class RehabIAApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: buildAppRouter(initialLocation: initialLocation),
-      // Aplicamos el tamaño de texto guardado en el perfil a TODA la
-      // app, de forma reactiva: si lo cambias en Ajustes, se ve
-      // reflejado al instante en cualquier pantalla, sin reiniciar.
       builder: (context, child) {
         return Consumer(
           builder: (context, ref, _) {

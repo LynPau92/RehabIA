@@ -10,13 +10,12 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Iconos base de Flutter
   cupertino_icons: ^1.0.8
 
   # --- Gestión de estado ---
-  flutter_riverpod: ^2.5.1
+  flutter_riverpod: ^2.6.1
 
-  # --- Base de datos local (historial, perfil, dolor) ---
+  # --- Base de datos local ---
   drift: ^2.20.1
   sqlite3_flutter_libs: ^0.5.24
   sqlite3: ^2.4.6
@@ -27,32 +26,77 @@ dependencies:
   camera: ^0.11.0+2
   google_mlkit_pose_detection: ^0.13.0
 
-  # --- Asistente de voz (Texto a voz) ---
+  # --- Asistente de voz ---
   flutter_tts: ^4.0.2
 
-  # --- Notificaciones locales (recordatorios) ---
+  # --- Notificaciones locales ---
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
 
-  # --- Compartir progreso (WhatsApp, correo, etc.) ---
+  # --- Compartir progreso ---
   share_plus: ^10.1.2
 
   # --- Navegación ---
   go_router: ^14.6.2
+
+  # --- Control del splash nativo desde el código (evita el "doble
+  # splash": mantiene la pantalla nativa visible hasta que la carga
+  # real termine, en vez de mostrar una pantalla de carga aparte) ---
+  flutter_native_splash: ^2.4.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
 
-  # Generadores de código para drift (base de datos)
   build_runner: ^2.4.13
   drift_dev: ^2.20.1
+
+  # --- Generador del ícono (este SÍ es solo de desarrollo) ---
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
 
-  # Cuando tengas imágenes/animaciones del avatar, se declaran así:
-  # assets:
-  #   - assets/images/
-  #   - assets/mascot/
+  assets:
+    - assets/branding/
+
+  fonts:
+    - family: Baloo2
+      fonts:
+        - asset: assets/fonts/Baloo2-Bold.ttf
+          weight: 700
+
+# ============================================================
+# Configuración del ÍCONO de la app.
+# Corre en la terminal: dart run flutter_launcher_icons
+# ============================================================
+flutter_launcher_icons:
+  android: true
+  ios: true
+  # Asegura que la versión de iOS quede 100% opaca (Apple la rechaza
+  # si detecta transparencia) — protección extra, aunque nuestra
+  # imagen base ya no tiene canal alpha.
+  remove_alpha_ios: true
+  # Versión "plana" (fondo turquesa sólido + personaje), usada como
+  # respaldo para iOS y versiones viejas de Android que no soportan
+  # íconos adaptativos.
+  image_path: "assets/branding/app_icon.png"
+  min_sdk_android: 21
+  # Ícono adaptativo (Android 8+): el sistema separa el personaje
+  # (primer plano, transparente) del fondo (un color sólido), y les
+  # aplica su propia forma (círculo, squircle, etc. según el celular)
+  # — por eso se ve mejor integrado que un ícono cuadrado forzado.
+  adaptive_icon_background: "#2BB0C4"
+  adaptive_icon_foreground: "assets/branding/app_icon_foreground.png"
+
+# ============================================================
+# Configuración de la PANTALLA DE BIENVENIDA (splash screen).
+# Corre en la terminal: dart run flutter_native_splash:create
+# ============================================================
+flutter_native_splash:
+  color: "#2BB0C4"
+  image: assets/branding/splash_logo.png
+  android_12:
+    image: assets/branding/splash_logo.png
+    color: "#2BB0C4"

@@ -97,30 +97,12 @@ class _GreetingHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SizedBox(
-          width: 88,
-          height: 80,
-          child: Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              Positioned(
-                bottom: 4,
-                child: Container(
-                  width: 76,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: AppColors.assistant.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const Positioned(
-                bottom: 10,
-                child: MascotAvatar(size: 72, pose: MascotPose.saludando),
-              ),
-            ],
-          ),
-        ),
+        // Antes había una "esterilla" decorativa aquí (un óvalo de
+        // color detrás de la mascota) — la quitamos porque la
+        // ilustración real ya trae su propia sombra incorporada, y
+        // la esterilla extra se veía como un elemento suelto sin
+        // sentido junto a la imagen nueva.
+        const MascotAvatar(size: 84, pose: MascotPose.saludando),
         const SizedBox(width: 16),
         Expanded(
           child: Column(

@@ -11,27 +11,46 @@ class NotificationService {
 
   static final _plugin = FlutterLocalNotificationsPlugin();
 
-  /// Se llama una sola vez, en main.dart, antes de runApp().
+  /// Se llama una sola vez, en main.dart, antes de runApp(). Es
+  /// rápido a propósito — NO pide ningún permiso aquí, solo prepara
+  /// el plugin. Antes pedíamos el permiso de notificaciones en este
+  /// mismo paso, y eso bloqueaba el arranque de la app esperando que
+  /// el usuario respondiera el diálogo del sistema, haciendo que el
+  /// splash se sintiera lento.
   static Future<void> init() async {
     tz_data.initializeTimeZones();
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: androidSettings);
     await _plugin.initialize(settings);
+  }
 
-    // A partir de Android 13, hay que pedir permiso explícito para
-    // mostrar notificaciones (antes no hacía falta).
-    await _plugin
+  /// Pide el permiso de notificaciones (Android 13+). Se llama SOLO
+  /// cuando el usuario activa el recordatorio en Ajustes — así el
+  /// diálogo del sistema aparece en un momento con contexto ("estoy
+  /// activando recordatorios"), no de sorpresa al abrir la app.
+  static Future<bool> requestPermission() async {
+    final granted = await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+    return granted ?? true; // iOS/versiones viejas de Android: no hace falta pedirlo
+  }
+
+  /// Pide el permiso de "alarmas exactas" (Android 12+). Sin esto, el
+  /// sistema puede retrasar el recordatorio 15-60 minutos para ahorrar
+  /// batería — inaceptable para algo tan importante como no perderse
+  /// la sesión de rehabilitación del día. Abre una pantalla de Ajustes
+  /// del sistema donde el usuario activa un interruptor.
+  static Future<bool> requestExactAlarmPermission() async {
+    final granted = await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestExactAlarmsPermission();
+    return granted ?? true;
   }
 
   /// Programa (o reemplaza) el recordatorio diario a la hora indicada.
-  /// Usamos "inexactAllowWhileIdle" a propósito: es menos preciso al
-  /// minuto exacto (puede llegar unos minutos después), pero no
-  /// requiere el permiso especial de "alarmas exactas" que Android 12+
-  /// exige por separado — así mantenemos la configuración simple.
   static Future<void> scheduleDailyReminder({
     required int hour,
     required int minute,
@@ -50,7 +69,11 @@ class NotificationService {
           priority: Priority.high,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      // Cambiado de "inexact" a "exact": para un recordatorio de
+      // salud, preferimos pedir el permiso extra a cambio de que
+      // suene a la hora que el paciente eligió, no "en algún momento
+      // cercano".
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time, // se repite todos los días
     );
@@ -60,12 +83,27 @@ class NotificationService {
     await _plugin.cancel(0);
   }
 
+  /// Calcula el próximo momento en que debe sonar el recordatorio.
+  ///
+  /// A diferencia del intento anterior (que necesitaba el plugin
+  /// flutter_timezone para saber "en qué zona horaria estás"), aquí
+  /// usamos SOLO herramientas que ya vienen con Dart:
+  ///   1. `DateTime.now()` nos da la hora local del celular tal cual
+  ///      el sistema operativo la interpreta — sin necesitar saber el
+  ///      nombre de la zona horaria (ej. "America/Santo_Domingo").
+  ///   2. `.toUtc()` convierte ese momento a UTC, algo que Dart hace
+  ///      correctamente por su cuenta usando la configuración del
+  ///      propio dispositivo.
+  ///   3. Construimos el TZDateTime que pide flutter_local_notifications
+  ///      directamente en UTC — así evitamos por completo necesitar
+  ///      configurar tz.local (que fue la causa del bug original) y
+  ///      también evitamos el plugin que rompía la compilación.
   static tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
+    final nowLocal = DateTime.now();
+    var scheduledLocal = DateTime(nowLocal.year, nowLocal.month, nowLocal.day, hour, minute);
+    if (scheduledLocal.isBefore(nowLocal)) {
+      scheduledLocal = scheduledLocal.add(const Duration(days: 1));
     }
-    return scheduled;
+    return tz.TZDateTime.from(scheduledLocal.toUtc(), tz.UTC);
   }
 }

@@ -47,7 +47,16 @@ class _ReminderSection extends ConsumerWidget {
     final db = ref.read(databaseProvider);
 
     if (enabled) {
-      // Si nunca eligió hora, usamos 9:00 AM como valor por defecto.
+      // Pedimos los dos permisos AQUÍ, justo cuando tiene sentido para
+      // el usuario (está activando recordatorios) — no al abrir la app.
+      final granted = await NotificationService.requestPermission();
+      if (!granted) return; // el usuario lo negó; no activamos el switch
+
+      // Este segundo permiso abre una pantalla de Ajustes de Android
+      // (no un simple diálogo) — es normal que se sienta "más pesado"
+      // que el anterior, es cómo Android lo diseñó para alarmas exactas.
+      await NotificationService.requestExactAlarmPermission();
+
       final hour = profile.reminderHour ?? 9;
       final minute = profile.reminderMinute ?? 0;
       await NotificationService.scheduleDailyReminder(hour: hour, minute: minute);
