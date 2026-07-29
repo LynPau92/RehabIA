@@ -75,6 +75,7 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
   bool _sessionCompleted = false;
 
   double? _currentKneeAngle;
+  double? _currentAnkleAngle;
   bool _autoTargetIsA = true;
   int _consecutiveMatchFrames = 0;
   static const int _framesNeededToConfirm = 3;
@@ -207,6 +208,7 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
           _lastRotation = inputImage.metadata!.rotation;
           _postureVisible = poses.isNotEmpty && _hasGoodVisibility(poses.first);
           _currentKneeAngle = poses.isNotEmpty ? kneeAngleFromPose(poses.first) : null;
+          _currentAnkleAngle = poses.isNotEmpty ? ankleAngleFromPose(poses.first) : null;
         });
         _evaluateAutoDetection();
         _checkPostureAnnouncement();
@@ -270,7 +272,10 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
       return;
     }
 
-    final angle = _currentKneeAngle;
+    // Elegimos qué ángulo usar según lo que pida la configuración de
+    // este ejercicio en particular — antes solo existía rodilla, pero
+    // los de tobillo ahora usan _currentAnkleAngle.
+    final angle = config.metric == AngleMetric.ankle ? _currentAnkleAngle : _currentKneeAngle;
     if (angle == null) return;
 
     if (config.type == AutoDetectType.isometricHold) {
@@ -555,6 +560,14 @@ class _ExerciseSessionScreenState extends ConsumerState<ExerciseSessionScreen> {
 
     if (!mounted) return;
     Navigator.of(context).pop(); // cierra el diálogo de dolor
+
+    // Le damos un respiro de un fotograma al framework antes de seguir
+    // — sin esto, si no hay ningún "await" real entre este pop y el
+    // siguiente (pasa cuando NO se ofrece avanzar de fase), Flutter
+    // puede toparse con un bug conocido del Navigator al recibir dos
+    // pops demasiado seguidos ("!_debugLocked").
+    await Future.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
 
     if (offerPhaseAdvance && profile != null) {
       final advance = await showDialog<bool>(

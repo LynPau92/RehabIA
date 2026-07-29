@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_colors.dart';
 import '../../core/providers.dart';
@@ -56,6 +57,12 @@ class _ReminderSection extends ConsumerWidget {
       // (no un simple diálogo) — es normal que se sienta "más pesado"
       // que el anterior, es cómo Android lo diseñó para alarmas exactas.
       await NotificationService.requestExactAlarmPermission();
+
+      // Tercer permiso: excluir la app de la optimización de batería.
+      // Sin esto, en fabricantes como Xiaomi o Tecno, el sistema puede
+      // "matar" el recordatorio silenciosamente aunque los dos
+      // permisos anteriores estén bien concedidos.
+      await NotificationService.requestIgnoreBatteryOptimizations();
 
       final hour = profile.reminderHour ?? 9;
       final minute = profile.reminderMinute ?? 0;
@@ -209,6 +216,42 @@ class _ReminderSection extends ConsumerWidget {
             'respecto a la hora exacta — así evitamos pedirte permisos '
             'adicionales de "alarmas exactas".',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        Card(
+          color: AppColors.assistant.withValues(alpha: 0.08),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '💡 ¿El recordatorio no te suena?',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Algunas marcas de celular (Xiaomi, Tecno, Huawei, y otras) '
+                  'restringen agresivamente qué apps pueden avisar en segundo '
+                  'plano, para ahorrar batería — a veces bloquean el '
+                  'recordatorio aunque le des todos los permisos dentro de la '
+                  'app. Busca "Inicio automático" o excepciones de batería '
+                  'para RehabIA en los ajustes de tu teléfono.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => openAppSettings(),
+                    icon: const Icon(Icons.settings),
+                    label: const Text('Abrir ajustes de la app'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
 

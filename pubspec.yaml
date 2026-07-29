@@ -36,6 +36,11 @@ dependencies:
   # --- Compartir progreso ---
   share_plus: ^10.1.2
 
+  # --- Excluir la app de la optimización de batería (para que los
+  # recordatorios suenen a la hora, en fabricantes agresivos como
+  # Xiaomi/Tecno) ---
+  permission_handler: ^11.3.1
+
   # --- Navegación ---
   go_router: ^14.6.2
 

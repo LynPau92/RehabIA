@@ -57,19 +57,40 @@ class _BootstrapState extends State<_Bootstrap> {
   }
 
   Future<_BootstrapResult> _runBootstrap() async {
-    await NotificationService.init();
-    await VoiceAssistant.init();
+    final stopwatch = Stopwatch()..start();
+    void mark(String label) {
+      debugPrint('⏱️ [BOOTSTRAP] $label: ${stopwatch.elapsedMilliseconds}ms');
+      stopwatch.reset();
+    }
+
+    // Estos dos NO se esperan (sin `await`): ninguno hace falta antes
+    // de mostrar Home — las notificaciones solo se usan si activas un
+    // recordatorio, y la voz solo al entrar a un ejercicio. Que
+    // terminen de inicializarse "de fondo" mientras el resto del
+    // arranque continúa, en vez de bloquear los primeros segundos.
+    NotificationService.init();
+    mark('NotificationService.init() (sin esperar)');
+
+    VoiceAssistant.init();
+    mark('VoiceAssistant.init() (sin esperar)');
 
     final database = AppDatabase();
+    mark('AppDatabase() creado');
+
     await seedDatabaseIfEmpty(database);
+    mark('seedDatabaseIfEmpty()');
+
     await applyKnownDataFixes(database);
+    mark('applyKnownDataFixes()');
 
     final existingProfiles = await database.select(database.patientProfiles).get();
+    mark('select(patientProfiles).get()');
     final initialLocation = existingProfiles.isNotEmpty ? '/home' : '/onboarding';
 
     if (existingProfiles.isNotEmpty) {
       final profile = existingProfiles.first;
       await VoiceAssistant.applyPreferences(rate: profile.voiceRate, volume: profile.voiceVolume);
+      mark('VoiceAssistant.applyPreferences()');
     }
 
     return _BootstrapResult(database: database, initialLocation: initialLocation);
@@ -77,28 +98,35 @@ class _BootstrapState extends State<_Bootstrap> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      home: FutureBuilder<_BootstrapResult>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            // El splash nativo sigue tapando la pantalla completa
-            // gracias a preserve() — aquí abajo no hace falta dibujar
-            // NADA (ni mascota, ni spinner); cualquier cosa que
-            // pongamos sería la "segunda imagen" que ya no queremos.
-            return const SizedBox.shrink();
-          }
-          final result = snapshot.data!;
-          return ProviderScope(
-            overrides: [
-              databaseProvider.overrideWithValue(result.database),
-            ],
-            child: RehabIAApp(initialLocation: result.initialLocation),
+    return FutureBuilder<_BootstrapResult>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          // Mientras carga: una MaterialApp mínima, SOLO para este
+          // estado (el splash nativo sigue tapando la pantalla gracias
+          // a preserve(), así que aquí no hace falta dibujar nada).
+          return const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: SizedBox.shrink(),
           );
-        },
-      ),
+        }
+
+        final result = snapshot.data!;
+        // A partir de aquí, RehabIAApp trae SU PROPIA MaterialApp
+        // (MaterialApp.router) — antes la teníamos envuelta en OTRA
+        // MaterialApp por fuera, y ESA era la causa real del bug de
+        // "se congela al guardar y volver": con dos Navigator
+        // distintos en la app, showDialog() (que por defecto usa el
+        // Navigator más externo) y Navigator.pop() (que usa el más
+        // cercano) terminaban apuntando a Navigators diferentes. Ahora
+        // solo existe UNO.
+        return ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(result.database),
+          ],
+          child: RehabIAApp(initialLocation: result.initialLocation),
+        );
+      },
     );
   }
 }

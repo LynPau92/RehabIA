@@ -21,20 +21,23 @@ double? _minLikelihood(Pose pose, List<PoseLandmarkType> types) {
 }
 
 /// Devuelve el lado (izquierdo o derecho) que la cámara ve con más
-/// confianza para cadera-rodilla-tobillo, junto con los 3 landmarks.
-({PoseLandmark hip, PoseLandmark knee, PoseLandmark ankle, PoseLandmark shoulder})?
+/// confianza para cadera-rodilla-tobillo-punta del pie, junto con los
+/// landmarks.
+({PoseLandmark hip, PoseLandmark knee, PoseLandmark ankle, PoseLandmark shoulder, PoseLandmark footIndex})?
     _bestLegSide(Pose pose) {
   final leftConfidence = _minLikelihood(pose, [
     PoseLandmarkType.leftShoulder,
     PoseLandmarkType.leftHip,
     PoseLandmarkType.leftKnee,
     PoseLandmarkType.leftAnkle,
+    PoseLandmarkType.leftFootIndex,
   ]);
   final rightConfidence = _minLikelihood(pose, [
     PoseLandmarkType.rightShoulder,
     PoseLandmarkType.rightHip,
     PoseLandmarkType.rightKnee,
     PoseLandmarkType.rightAnkle,
+    PoseLandmarkType.rightFootIndex,
   ]);
 
   final useLeft = (leftConfidence ?? 0) >= (rightConfidence ?? 0);
@@ -46,6 +49,7 @@ double? _minLikelihood(Pose pose, List<PoseLandmarkType> types) {
     hip: pose.landmarks[useLeft ? PoseLandmarkType.leftHip : PoseLandmarkType.rightHip]!,
     knee: pose.landmarks[useLeft ? PoseLandmarkType.leftKnee : PoseLandmarkType.rightKnee]!,
     ankle: pose.landmarks[useLeft ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle]!,
+    footIndex: pose.landmarks[useLeft ? PoseLandmarkType.leftFootIndex : PoseLandmarkType.rightFootIndex]!,
   );
 }
 
@@ -54,6 +58,18 @@ double? kneeAngleFromPose(Pose pose) {
   final side = _bestLegSide(pose);
   if (side == null) return null;
   return _angleAt(side.hip, side.knee, side.ankle);
+}
+
+/// Ángulo de tobillo (rodilla-tobillo-punta del pie). Alrededor de
+/// 90-100° = posición neutral; sube cuando el pie apunta hacia abajo
+/// (elevación de talones), baja cuando el pie apunta hacia la
+/// espinilla (flexión dorsal). ML Kit sí incluye un punto para la
+/// punta del pie (FootIndex), por eso podemos medir esto — no tenemos
+/// esta suerte con los dedos de la mano.
+double? ankleAngleFromPose(Pose pose) {
+  final side = _bestLegSide(pose);
+  if (side == null) return null;
+  return _angleAt(side.knee, side.ankle, side.footIndex);
 }
 
 /// Heurística simple para saber si el paciente está DE PIE, comparando
@@ -114,8 +130,14 @@ bool isSingleLegStance(Pose pose) {
 
 enum AutoDetectType { isometricHold, repCycle, singleLegHold }
 
+/// Qué ángulo del cuerpo hay que medir para este ejercicio. Antes solo
+/// existía la rodilla; con el tobillo agregamos la primera lesión que
+/// necesita otra articulación distinta.
+enum AngleMetric { knee, ankle }
+
 class AutoDetectConfig {
   final AutoDetectType type;
+  final AngleMetric metric;
   final double targetAngleA;
   final double? targetAngleB;
   final double tolerance;
@@ -127,6 +149,7 @@ class AutoDetectConfig {
 
   const AutoDetectConfig({
     required this.type,
+    this.metric = AngleMetric.knee,
     required this.targetAngleA,
     this.targetAngleB,
     this.tolerance = 15,
@@ -179,5 +202,88 @@ const Map<String, AutoDetectConfig> autoDetectConfigsByExerciseName = {
     type: AutoDetectType.singleLegHold,
     targetAngleA: 0, // sin uso en este tipo — se evalúa con isSingleLegStance()
     tolerance: 0,
+  ),
+
+  // ============================================================
+  // LCA — Post-Operatorio de Ligamento Cruzado Anterior (Rodilla)
+  // ============================================================
+  'Isométrico de cuádriceps': AutoDetectConfig(
+    type: AutoDetectType.isometricHold,
+    targetAngleA: 175, // pierna extendida
+    tolerance: 18,
+    rejectIfStanding: true, // sentado o acostado
+  ),
+  'Deslizamiento de talón': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 170,
+    targetAngleB: 100,
+    tolerance: 18,
+    rejectIfStanding: true, // sentado en el suelo
+  ),
+  'Isometría en pared': AutoDetectConfig(
+    type: AutoDetectType.isometricHold,
+    targetAngleA: 95, // sentadilla estática contra la pared, ~45-90°
+    tolerance: 20,
+  ),
+  'Prensa con banda': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 95,
+    targetAngleB: 170,
+    tolerance: 20,
+    rejectIfStanding: true,
+  ),
+  'Mini sentadilla': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 170, // de pie
+    targetAngleB: 150, // flexión de 30-45°
+    tolerance: 15,
+  ),
+
+  // ============================================================
+  // Esguince de Tobillo (Grados I y II)
+  // ============================================================
+  'Bombeo de tobillo': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    metric: AngleMetric.ankle,
+    targetAngleA: 110, // punta hacia abajo
+    targetAngleB: 75, // punta hacia la espinilla
+    tolerance: 20,
+  ),
+  'Flexión dorsal con banda': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    metric: AngleMetric.ankle,
+    targetAngleA: 100,
+    targetAngleB: 75,
+    tolerance: 18,
+  ),
+  'Elevación de talones': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    metric: AngleMetric.ankle,
+    targetAngleA: 90, // pie plano
+    targetAngleB: 125, // de puntitas
+    tolerance: 18,
+  ),
+  'Elevación de puntas': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    metric: AngleMetric.ankle,
+    targetAngleA: 90,
+    targetAngleB: 75, // solo talones apoyados, puntas arriba
+    tolerance: 15,
+  ),
+  'Equilibrio unipodal': AutoDetectConfig(
+    type: AutoDetectType.singleLegHold,
+    targetAngleA: 0,
+    tolerance: 0,
+  ),
+  'Equilibrio sobre almohada': AutoDetectConfig(
+    type: AutoDetectType.singleLegHold,
+    targetAngleA: 0,
+    tolerance: 0,
+  ),
+  'Estocadas controladas': AutoDetectConfig(
+    type: AutoDetectType.repCycle,
+    targetAngleA: 170, // de pie
+    targetAngleB: 130, // en la zancada
+    tolerance: 20,
   ),
 };
