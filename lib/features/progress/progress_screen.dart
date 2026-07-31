@@ -7,11 +7,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_colors.dart';
-import '../../core/providers.dart';
 import '../../core/database/app_database.dart';
+import '../../core/providers.dart';
+import '../../core/widgets/mascot_avatar.dart';
 import '../../core/widgets/scroll_to_top_fab.dart';
 import '../../core/widgets/skeleton_loader.dart';
-import '../../core/widgets/mascot_avatar.dart';
 import 'shareable_session_card.dart';
 
 class ProgressScreen extends ConsumerStatefulWidget {
@@ -24,6 +24,7 @@ class ProgressScreen extends ConsumerStatefulWidget {
 class _ProgressScreenState extends ConsumerState<ProgressScreen> {
   final _scrollController = ScrollController();
   bool _showScrollTopButton = false;
+  bool _isSharing = false;
 
   @override
   void initState() {
@@ -36,16 +37,23 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     });
   }
 
-  bool _isSharing = false;
-
-  Future<void> _shareProgressSummary(PatientProfile profile, List<Session> sessions) async {
+  Future<void> _shareProgressSummary(
+    PatientProfile profile,
+    List<Session> sessions,
+    BuildContext buttonContext,
+  ) async {
     if (sessions.isEmpty || _isSharing) return;
+
+    // Calculamos la posición del botón ANTES de cualquier await para evitar el warning del linter
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final sharePositionOrigin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+
     setState(() => _isSharing = true);
 
     try {
       final db = ref.read(databaseProvider);
-      // Tomamos la sesión más reciente (ya vienen ordenadas de más
-      // nueva a más vieja) y traemos el detalle de sus ejercicios.
       final latestSession = sessions.first;
       final logs = await (db.select(db.sessionExerciseLogs)
             ..where((l) => l.sessionId.equals(latestSession.id)))
@@ -53,8 +61,9 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
 
       final entries = <ShareableExerciseEntry>[];
       for (final log in logs) {
-        final exercise =
-            await (db.select(db.exercises)..where((e) => e.id.equals(log.exerciseId))).getSingle();
+        final exercise = await (db.select(db.exercises)
+              ..where((e) => e.id.equals(log.exerciseId)))
+            .getSingle();
         entries.add(ShareableExerciseEntry(exercise: exercise, log: log));
       }
 
@@ -67,12 +76,15 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       );
 
       final pngBytes = await captureSessionCardAsPng(context, card);
+      
+      if (!mounted) return;
+
       if (pngBytes == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No se pudo generar la imagen. Intenta de nuevo.')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo generar la imagen. Intenta de nuevo.'),
+          ),
+        );
         return;
       }
 
@@ -81,8 +93,9 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       await file.writeAsBytes(pngBytes);
 
       await Share.shareXFiles(
-        [XFile(file.path)],
+        [XFile(file.path, mimeType: 'image/png')],
         text: '¡Mira mi progreso en RehabIA! 💪',
+        sharePositionOrigin: sharePositionOrigin,
       );
     } finally {
       if (mounted) setState(() => _isSharing = false);
@@ -160,16 +173,22 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     children: [
                       Align(
                         alignment: Alignment.centerRight,
-                        child: OutlinedButton.icon(
-                          onPressed: _isSharing ? null : () => _shareProgressSummary(profile, sessions),
-                          icon: _isSharing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.ios_share, size: 18),
-                          label: Text(_isSharing ? 'Generando...' : 'Compartir resumen'),
+                        child: Builder(
+                          builder: (btnContext) {
+                            return OutlinedButton.icon(
+                              onPressed: _isSharing
+                                  ? null
+                                  : () => _shareProgressSummary(profile, sessions, btnContext),
+                              icon: _isSharing
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.ios_share, size: 18),
+                              label: Text(_isSharing ? 'Generando...' : 'Compartir resumen'),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -235,17 +254,12 @@ class _EmptyProgressState extends StatelessWidget {
   }
 }
 
-/// --- Racha de días consecutivos + resumen de la semana ---
 class _StreakAndWeekRow extends StatelessWidget {
   final List<Session> sessions;
 
   const _StreakAndWeekRow({required this.sessions});
 
   int get _streakDays {
-    // IMPORTANTE: convertimos cada fecha a hora LOCAL antes de sacar
-    // el "día calendario". drift guarda las fechas en UTC por dentro;
-    // si no convertimos, una sesión hecha a las 9pm en RD (UTC-4)
-    // podría contarse como si hubiera sido al día siguiente.
     final days = sessions
         .map((s) => s.date.toLocal())
         .map((d) => DateTime(d.year, d.month, d.day))
@@ -366,8 +380,6 @@ class _PainChart extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          // .toLocal() también aquí, para que la fecha
-                          // mostrada coincida con tu calendario real.
                           '${log.date.toLocal().day}/${log.date.toLocal().month}',
                           style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
                         ),

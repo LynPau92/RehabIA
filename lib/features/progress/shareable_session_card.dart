@@ -241,6 +241,7 @@ class _ExerciseChip extends StatelessWidget {
 /// Dibuja `card` "fuera de la pantalla visible" (usando el Overlay de
 /// Flutter) y lo captura como bytes PNG — así podemos compartirlo como
 /// imagen real, no como texto.
+// Dibuja ⁠ card ⁠ de forma transparente sobre la pantalla y lo captura como PNG.
 Future<Uint8List?> captureSessionCardAsPng(BuildContext context, Widget card) async {
   final repaintKey = GlobalKey();
   final overlay = Overlay.of(context);
@@ -248,21 +249,22 @@ Future<Uint8List?> captureSessionCardAsPng(BuildContext context, Widget card) as
   late OverlayEntry entry;
   entry = OverlayEntry(
     builder: (_) => Positioned(
-      // Muy a la izquierda y arriba, fuera del área visible, pero
-      // sigue siendo parte del árbol de widgets real (por eso SÍ se
-      // puede capturar como imagen).
-      left: -4000,
-      top: -4000,
-      child: RepaintBoundary(key: repaintKey, child: card),
+      left: 0,
+      top: 0,
+      child: IgnorePointer(
+        child: Opacity(
+          // Opacidad mínima para que iOS no descarte los píxeles durante el renderizado.
+          opacity: 0.01,
+          child: RepaintBoundary(key: repaintKey, child: card),
+        ),
+      ),
     ),
   );
 
   overlay.insert(entry);
 
   try {
-    // Esperamos un par de frames para asegurarnos de que ya se
-    // terminó de dibujar (las imágenes como el avatar tardan un
-    // instante en decodificarse) antes de capturar.
+    // Esperamos 2 fotogramas para asegurar la renderización en iOS
     await WidgetsBinding.instance.endOfFrame;
     await WidgetsBinding.instance.endOfFrame;
 
